@@ -2,9 +2,10 @@
 # @Author: Muhammad Umair
 # @Date:   2022-08-26 18:35:51
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-08-26 19:07:05
+# @Last Modified time: 2022-08-28 10:36:48
 
 
+from pickletools import floatnl
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -19,7 +20,9 @@ class LSTMVoiceActivityPredictor(pl.LightningModule):
         hidden_dim : int,
         output_dim : int,
         layer_dim : int = 1,
-        loss_fn="mae"
+        loss_fn : str = "mae",
+        learning_rate : float = 0.01,
+        weight_decay : float = 0.001
     ):
 
         assert loss_fn in self._SUPPORTED_LOSS, \
@@ -29,6 +32,8 @@ class LSTMVoiceActivityPredictor(pl.LightningModule):
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
         self.layer_dim = layer_dim
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
 
         # Define the model
         self.lstm = nn.LSTM(
@@ -69,14 +74,27 @@ class LSTMVoiceActivityPredictor(pl.LightningModule):
         return self.fc_activation(self.fc(out))
 
     def training_step(self, batch, batch_idx):
+        """Calculate, log, and return the loss for a single training batch"""
         x, y = batch
         x = x.type(torch.FloatTensor)
         y_hat = self.forward(x)
+        assert not torch.isnan(y_hat).any()
+        assert not torch.isnan(y).any()
         loss = self.loss_fn(y, y_hat)
+        assert not torch.isnan(y).any()
+        self.log({"train/loss" : loss})
+        return loss
 
-
-    def validation_step(self, *args, **kwargs) -> Optional[STEP_OUTPUT]:
-        return super().validation_step(*args, **kwargs)
+    def validation_step(self, batch, batch_idx):
+        """Calculate and log the loss for a single validation batch"""
+        x, y = batch
+        y_hat = self.forward(x)
+        loss = self.loss_fn(y, y_hat)
+        self.log({"eval/loss" : loss})
 
     def configure_optimizers(self):
-        return super().configure_optimizers()
+        return torch.optim.RMSprop(
+            self.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay
+        )
