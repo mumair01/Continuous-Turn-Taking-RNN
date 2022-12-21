@@ -12,13 +12,13 @@ test = [
 ]
 
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools.packages]
+find = {}  # Scanning implicit namespaces is active by default
 
 # pyproject.toml
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-ra -q"
+addopts = "-rA"
 testpaths = [
     "tests",
 ]
