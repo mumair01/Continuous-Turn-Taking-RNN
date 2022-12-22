@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-08-26 18:35:51
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-22 11:58:13
+# @Last Modified time: 2022-12-22 13:21:36
 
 
 import pytorch_lightning as pl
@@ -25,6 +25,11 @@ class VoiceActivityPredictor(pl.LightningModule):
     ):
         super().__init__()
 
+        self.input_dim = input_dim
+        self.hidden_dim = hidden_dim
+        self.out_features = out_features
+        self.num_layers = num_layers
+        self.loss_fn = loss_fn
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
 
@@ -57,11 +62,11 @@ class VoiceActivityPredictor(pl.LightningModule):
         """
         # Initialize the hidden states for first input with zeroes.
         h0 = torch.zeros(
-            self.layer_dim,batch.size(0),self.hidden_dim
+            self.num_layers,batch.size(0),self.hidden_dim
         ).requires_grad_()
         # Initialize the cell state for the first input with zeroes.
         c0 = torch.zeros(
-            self.layer_dim, batch.size(0),self.hidden_dim
+            self.num_layers, batch.size(0),self.hidden_dim
         ).requires_grad_()
 
         # We need to detach as we are doing truncated backpropagation through

@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-22 11:17:49
+# @Last Modified time: 2022-12-22 13:40:19
 
 import sys
 import os
@@ -26,8 +26,12 @@ class MapTaskVADataModule(pl.LightningDataModule):
         self,
         sequence_length_ms,
         prediction_length_ms,
-        target_participant,
         frame_step_size_ms,
+        data_dir = None,
+        variant = None,
+        save_dir = None,
+        target_participant = "f",
+        batch_size = 32
     ):
         super().__init__()
         # Vars.
@@ -35,28 +39,28 @@ class MapTaskVADataModule(pl.LightningDataModule):
         self.prediction_length_ms = prediction_length_ms
         self.target_participant = target_participant
         self.frame_step_size_ms = frame_step_size_ms
+        self.data_dir = data_dir
+        self.variant = variant
+        self.save_dir = save_dir
+        self.target_participant = target_participant
+        self.batch_size = batch_size
 
-    def prepare_data(
-        self,
-        data_dir = None,
-        variant = None,
-        save_dir = None,
-        target_participant="f"
-    ):
+    def prepare_data(self):
         reader = MapTaskDataReader(
             frame_step_size_ms=self.frame_step_size_ms,
             num_conversations=None
         )
-        if data_dir == None:
+        if self.data_dir == None:
             reader.prepare_data()
             self.paths = reader.setup(
-                variant=variant,
-                save_dir=save_dir
+                variant=self.variant,
+                save_dir=self.save_dir
             )
-        elif os.path.isdir(data_dir):
-            self.paths = reader.load_from_dir(data_dir)
+        elif os.path.isdir(self.data_dir):
+            self.paths = reader.load_from_dir(self.data_dir)
+        else:
+            raise Exception()
 
-        self.target_participant = target_participant
 
     def setup(self, stage=None):
         # NOTE: Must load all data
@@ -91,7 +95,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(
             self.train,
-            batch_size=32,
+            batch_size=self.batch_size,
             shuffle=True,
             drop_last=True,
             pin_memory=True,
@@ -101,7 +105,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             self.val,
-            batch_size=32,
+            batch_size=self.batch_size,
             shuffle=True,
             drop_last=True,
             pin_memory=True,
