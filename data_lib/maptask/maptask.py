@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-21 12:45:50
+# @Last Modified time: 2022-12-22 10:48:39
 
 import sys
 import os
@@ -14,14 +14,17 @@ import pandas as pd
 
 from datasets import concatenate_datasets, Dataset
 import sklearn
+from functools import partial
 
 import numpy as np
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
 
 import pytorch_lightning as pl
 
+import glob
 
 # Create a vocabulary from all the POS annotation tags
 # Documentation to the MapTask POS tags:  https://groups.inf.ed.ac.uk/maptask/interface/expl.html
@@ -87,25 +90,47 @@ POS_TAGS = [
     "sent"
 ]
 
+
+COMMON_FEATURES = [
+    "frameTime", "voiceActivity", "Loudness_sma3",
+    "F0semitoneFrom27.5Hz_sma3nz", "F0semitoneFrom27.5Hz_sma3nzZNormed",
+    "spectralFlux_sma3ZNormed", "Loudness_sma3ZNormed"
+]
+
+FULL_FEATURES = COMMON_FEATURES + POS_TAGS
+
+PROSODY_FEATURES = COMMON_FEATURES
+
 class MapTaskDataReader:
+
 
     def __init__(
         self,
-        sequence_length_ms : int = 60_000,
-        prediction_length_ms : int = 3000,
         frame_step_size_ms : int = 10,
         num_conversations : int = None
     ):
-        self.sequence_length_ms = sequence_length_ms
-        self.prediction_length_ms = prediction_length_ms
         self.frame_step_size_ms = frame_step_size_ms
         self.num_conversations = num_conversations
 
-        self.num_context_frames = sequence_length_ms // frame_step_size_ms
-        self.num_target_frames = prediction_length_ms // frame_step_size_ms
+    @property
+    def data_paths(self):
+        f_paths = sorted(self.paths["f"])
+        g_paths = sorted(self.paths["g"])
+        return {
+            "f" : f_paths,
+            "g" : g_paths
+        }
 
-        self.xs = []
-        self.ys = []
+    def load_from_dir(self, dir_path):
+        filepaths = glob.glob("{}/*.csv".format(dir_path))
+        paths = defaultdict(lambda : list())
+        for path in filepaths:
+            if os.path.basename(path).split(".")[1] == "f":
+                paths["f"].append(path)
+            elif os.path.basename(path).split(".")[1] == "g":
+                paths["g"].append(path)
+        self.paths = paths
+        return paths
 
     def prepare_data(self):
         dset_def = load_data(
@@ -120,62 +145,50 @@ class MapTaskDataReader:
             dset = dset.select(range(self.num_conversations))
         self.dset = dset
 
-    def setup(self, variant=None, save_dir=None):
-        if variant == "full":
-            dset = self._full_variant()
-        elif variant == "prosody":
-            dset = dset.map(self._extract_audio_features)
-            dset = dset.map(self._add_frame_times)
-            dset = dset.map(self._extract_voice_activity_annotations)
-            dset = dset.map(self._normalize_features)
-        else:
-            raise NotImplementedError(
-                f"ERROR: Variant not implemented: {variant}"
-            )
+    def setup(self, variant, save_dir):
 
-        # print(len(dset["processed"]))
-        # df = pd.DataFrame(dset["processed"]["values"], columns=dset["processed"]["features"])
-        # print(df)
-        # sys.exit(-1)
-        if save_dir != None:
-            os.makedirs(save_dir,exist_ok=True)
-            path = f"{save_dir}/maptask_{variant}.csv"
-            dset.to_csv(path)
-        return self.dset
+        print(
+            f"Processing maptask for variant: {variant}\n"
+            f"Number of conversations = {self.num_conversations}"
+        )
 
-    def _full_variant(self):
         dset = self.dset
-        dset = dset.map(self._extract_audio_features)
-        dset = dset.map(self._add_frame_times)
-        dset = dset.map(self._extract_voice_activity_annotations)
-        dset = dset.map(self._normalize_features)
-        dset = dset.map(self._extract_pos_with_delay)
+        num_proc = 4
+        print(f"Extracting audio features...")
+        dset = dset.map(self._extract_audio_features, num_proc=num_proc)
+        print(f"Adding frame times...")
+        dset = dset.map(self._add_frame_times,num_proc=num_proc)
+        print(f"Extracting voice activity annotations...")
+        dset = dset.map(self._extract_voice_activity_annotations,num_proc=num_proc)
+        print(f"Normalizing features")
+        dset = dset.map(self._normalize_features,num_proc=num_proc)
+        if variant == "full":
+            print("Extracting POS with delay...")
+            dset = dset.map(self._extract_pos_with_delay,num_proc=num_proc)
         dset = dset.rename_column("mono_gemaps", "processed").remove_columns([
             "utterances", 'audio_paths', '__index_level_0__'
         ])
-        f = np.asarray(dset.filter(lambda item: item["participant"] == "f").sort("dialogue"))
-        g = np.asarray(dset.filter(lambda item: item["participant"] == "g").sort("dialogue"))
-        f_df = self._convert_to_df(f.remove_columns(["dialogue", "participant"]))
-        g = self._convert_to_df(g.remove_columns(["dialogue", "participant"]))
+        f = dset.filter(lambda item: item["participant"] == "f").sort("dialogue")
+        g = dset.filter(lambda item: item["participant"] == "g").sort("dialogue")
 
+        path = f"{save_dir}/{variant}"
+        os.makedirs(path, exist_ok=True)
 
-        print(f.shape)
-        combined = np.column_stack((f,g))
-        print(combined.shape)
-        df =
+        def convert_item_to_df_and_save(item):
+            values = np.asarray(item['processed']["values"])
+            features = item["processed"]["features"]
+            df = pd.DataFrame(values,columns=features)
 
+            df = df[FULL_FEATURES if variant == "full" else PROSODY_FEATURES]
+            dialogue, participant = item["dialogue"], item["participant"]
+            filepath = f"{path}/{dialogue}.{participant}.csv"
+            df.to_csv(f"{filepath}")
 
-        for i, j in zip(f,g):
-            assert i["dialogue"] == j["dialogue"]
-
-
-        f_df = self._convert_to_df(f)
-        g_df = self._convert_to_df(g)
-
-        print(f)
-        print(g)
-
-        return dset
+        self.paths = {}
+        print(f"Saving items to directory: {path}")
+        f.map(convert_item_to_df_and_save,num_proc=num_proc)
+        g.map(convert_item_to_df_and_save,num_proc=num_proc)
+        return self.load_from_dir(path)
 
     def _extract_audio_features(self, item):
         # NOTE: This should be 50 ms but this is a bug in the datasets lib.
@@ -187,18 +200,21 @@ class MapTaskDataReader:
         values = np.asarray(item["mono_gemaps"]["values"]).squeeze()
         step = self.frame_step_size_ms / 1000
         frame_times = np.arange(0, step * len(values), step).reshape(-1,1)
-        assert frame_times.shape[0] == values.shape[0]
+        assert frame_times.shape[0] == values.shape[0], \
+            f"ERROR: {frame_times.shape} != {values.shape} in the first dim"
         x = np.column_stack((frame_times,values))
         item["mono_gemaps"]["values"] = x
         item["mono_gemaps"]["features"].insert(0, "frameTime")
         return item
 
     def _merge_datasets(self, df1, df2):
-        assert len(df1) == len(df2)
+        assert len(df1) == len(df2), \
+            f"ERROR: Lengths of dfs must be same: {len(df1)} != {len(df2)}"
         df1 = pd.DataFrame(df1)
         df2 = pd.DataFrame(df2)
         merged = pd.merge(df1,df2,how="outer")
-        assert len(df1) == len(merged)
+        assert len(df1) == len(merged), \
+            f"ERROR: Lengths of dfs must be same: {len(df1)} != {len(merged)}"
         return Dataset.from_pandas(merged)
 
     def _extract_voice_activity_annotations(self, item):
@@ -228,7 +244,8 @@ class MapTaskDataReader:
         ]
         features = np.asarray(item["mono_gemaps"]["features"])
         values = np.asarray(item["mono_gemaps"]["values"])
-        assert "F0semitoneFrom27.5Hz_sma3nz" in item["mono_gemaps"]["features"]
+        assert "F0semitoneFrom27.5Hz_sma3nz" in item["mono_gemaps"]["features"], \
+            f"ERROR: Feature not found"
         idx = [int(np.where(features == f)[0]) for f in norm_features]
         feats_to_norm = values[:,idx]
         z_norm = lambda v : sklearn.preprocessing.scale(v,axis=1)
@@ -262,7 +279,8 @@ class MapTaskDataReader:
             # Convert to integer based on the vocabulary dictionary.
             pos_annotations[frame_idx] = pos_tags_to_idx[pos_tag]
         # The pos annotations should not have any nan values
-        assert not np.isnan(pos_annotations).any()
+        assert not np.isnan(pos_annotations).any(), \
+            f"ERROR: POS annotations must not have null values"
         # This encoder will ignore any unknown tags by replacing them with all zeros.
         onehot_encoder = sklearn.preprocessing.OneHotEncoder(
             sparse=False,handle_unknown="ignore")
@@ -275,9 +293,14 @@ class MapTaskDataReader:
         item["mono_gemaps"]["values"] = values
         return item
 
-    def _convert_to_df(self, dset):
-        values = np.asarray([item["values"] for item in dset["processed"]])
-        values = values.reshape(-1,values.shape[-1])
-        features = dset["processed"][0]["features"]
-        df = pd.DataFrame(values,columns=features)
-        return df
+if __name__ == "__main__":
+
+    reader = MapTaskDataReader(
+        frame_step_size_ms=10,
+        num_conversations=50
+    )
+    reader.prepare_data()
+    reader.setup(
+        variant="full",
+        save_dir="./output"
+    )
