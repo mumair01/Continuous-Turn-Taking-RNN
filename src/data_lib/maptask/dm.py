@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-22 10:55:16
+# @Last Modified time: 2022-12-22 11:17:49
 
 import sys
 import os
@@ -29,6 +29,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
         target_participant,
         frame_step_size_ms,
     ):
+        super().__init__()
         # Vars.
         self.sequence_length_ms = sequence_length_ms
         self.prediction_length_ms = prediction_length_ms
@@ -131,6 +132,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         save_dir = None,
         target_participant="f"
     ):
+        super().__init__()
         self.sequence_length_ms = sequence_length_ms
         self.min_pause_length_ms = min_pause_length_ms
         self.max_future_silence_window_ms = max_future_silence_window_ms

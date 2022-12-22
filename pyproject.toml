@@ -17,6 +17,9 @@ find = {}  # Scanning implicit namespaces is active by default
 
 # pyproject.toml
 [tool.pytest.ini_options]
+pythonpath = [
+    "src"
+]
 minversion = "6.0"
 addopts = "-rA"
 testpaths = [
