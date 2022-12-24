@@ -1,0 +1,7 @@
+[paths]
+outputDir = "output"
+
+[paths.datasets]
+cacheDir = "data/cache"
+rawDir = "data/raw"
+processedDir = "data/processed"

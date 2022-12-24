@@ -2,45 +2,113 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 10:06:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-22 10:36:22
+# @Last Modified time: 2022-12-24 14:31:39
 
 
 import sys
 import os
+import glob
 
 import pandas as pd
 from datasets import Dataset
 import numpy as np
 import torch
 import torch.nn as nn
+import h5py
 
+from .maptask import MapTaskDataReader
 
-class MapTaskVADDataset(Dataset):
+# TODO: Ensure prodody and full datasets have right dims.
+class MapTask(Dataset):
+
     def __init__(
         self,
-        paths,
-        sequence_length_ms,
-        prediction_length_ms,
-        target_participant,
-        frame_step_size_ms,
+        data_dir : str,
+        # TODO: Make this configurable when reader bugs are fixed.
+        # frame_step_size_ms : int = 10
     ):
-        self.paths = paths
+
+        self.base_data_dir = data_dir
+        self.full_feature_dir = os.path.join(data_dir,"full")
+        self.prosody_feature_dir = os.path.join(data_dir,"prosody")
+        self.full_paths = None
+        self.prosody_paths = None
+
+        self.frame_step_size_ms = 10
+        self.reader = reader = MapTaskDataReader(
+            frame_step_size_ms=self.frame_step_size_ms,
+            num_conversations=10 # For testing
+        )
+        self._download_raw()
+
+    def _download_raw(self):
+
+        if not self._check_exists("full"):
+            self.reader.prepare_data()
+            self.full_paths = self.reader.setup(
+                variant="full",
+                save_dir=self.base_data_dir
+            )
+        else:
+            self.full_paths = self.reader.load_from_dir(
+                self.full_feature_dir
+            )
+        if not self._check_exists("prosody"):
+            self.reader.prepare_data()
+            self.prosody_paths = self.reader.setup(
+                variant="prosody",
+                save_dir=self.base_data_dir
+            )
+        else:
+            self.prosody_paths = self.reader.load_from_dir(
+                self.prosody_feature_dir
+            )
+
+    def _check_exists(self, variant):
+        # TODO: Add the exact size later.
+        if not os.path.isdir(self.base_data_dir):
+            return False
+        if variant == "full":
+            return os.path.isdir(self.full_feature_dir) and \
+                len(glob.glob("{}/*.csv".format(self.full_feature_dir))) > 0
+        elif variant == "prosody":
+            return os.path.isdir(self.prosody_feature_dir) and \
+                len(glob.glob("{}/*.csv".format(self.prosody_feature_dir))) > 0
+        return False
+
+# TODO: Make the saving and loading mechanism better.
+class MapTaskVADDataset(MapTask):
+    def __init__(
+        self,
+        data_dir : str,
+        sequence_length_ms : int,
+        prediction_length_ms : int,
+        target_participant : int,
+        feature_set : str,
+        # TODO: Make this configurable when reader bugs are fixed.
+        # frame_step_size_ms : int = 10
+        force_reprocesses : bool = False
+    ):
+        super().__init__(f"{data_dir}/maptask")
+
         # Vars.
+        frame_step_size_ms = 10 # TODO: Remove hard coded value layer
+
+        self.data_dir = data_dir
         self.sequence_length_ms = sequence_length_ms
         self.prediction_length_ms = prediction_length_ms
         self.target_participant = target_participant
         self.frame_step_size_ms = frame_step_size_ms
+        self.feature_set = feature_set
+        self.force_reprocess = force_reprocesses
+
+        self.save_dir_path = data_dir
+        os.makedirs(self.save_dir_path,exist_ok=True)
+        self.h5_filename = "va_dataset.h5"
         # Calculated
         self.num_context_frames = int(sequence_length_ms / frame_step_size_ms)
         self.num_target_frames = int(prediction_length_ms / frame_step_size_ms)
-
-        self.xs = []
-        self.ys = []
-        for s0_path, s1_path in paths:
-            s0_feature_df = pd.read_csv(s0_path, index_col=0,delimiter=",")
-            s1_feature_df = pd.read_csv(s1_path,index_col=0,delimiter=",")
-            self._load_data(s0_feature_df, s1_feature_df)
-        assert len(self.xs) == len(self.ys)
+        self._prepare()
 
     def __len__(self):
         return len(self.xs)
@@ -48,7 +116,67 @@ class MapTaskVADDataset(Dataset):
     def __getitem__(self, idx):
         if idx > self.__len__():
             raise Exception
+        # NOTE: xs has target speaker features concatenated with non-target speaker features.
+        # ys is the previous speaker, hold / shift label, and the next speaker.
         return self.xs[idx], self.ys[idx]
+
+
+    def _prepare(self):
+        if self._check_va_exists() and not self.force_reprocess:
+            self._load_from_disk()
+        else:
+            paths = self.full_paths if self.feature_set == "full" \
+                else self.prosody_paths
+
+            s0_paths = paths[self.target_participant]
+            s1_paths = paths["f" if self.target_participant == "g" else "g"]
+            self.xs = []
+            self.ys = []
+            for s0_path, s1_path in zip(s0_paths, s1_paths):
+                self._load_apply_transforms(s0_path, s1_path)
+            # Save the dataset
+            self._save()
+
+        assert len(self.xs) == len(self.ys)
+
+    def _save(self):
+        # Save the xs and ys
+        group = f"{self.feature_set}/{self.target_participant}/"\
+            f"{self.sequence_length_ms}_{self.prediction_length_ms}"
+
+        with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'a') as hf:
+            # Delete if exists
+            if self.force_reprocess and self._check_va_exists():
+                del hf[self.feature_set][self.target_participant]\
+                    [f"{self.sequence_length_ms}_{self.prediction_length_ms}"]
+
+            hf.create_dataset(f"{group}/xs", data=np.asarray(self.xs))
+            hf.create_dataset(f"{group}/ys", data=np.asarray(self.ys))
+
+    def _load_from_disk(self):
+        with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'r') as hf:
+            group = hf[self.feature_set][self.target_participant]
+            group = group[f"{self.sequence_length_ms}_{self.prediction_length_ms}"]
+
+            self.xs = group["xs"][:]
+            self.ys = group["ys"][:]
+
+    def _check_va_exists(self):
+        if os.path.isdir(self.save_dir_path) and \
+                os.path.exists(os.path.join(self.save_dir_path,self.h5_filename)):
+            with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'r') as hf:
+                return self.feature_set in hf and \
+                    self.target_participant in hf[self.feature_set] and \
+                    f"{self.sequence_length_ms}_{self.prediction_length_ms}" in \
+                        hf[self.feature_set][self.target_participant]
+        return False
+
+
+    def _load_apply_transforms(self, s0_path, s1_path):
+        # TODO: Add multiprocessing here.
+        s0_feature_df = pd.read_csv(s0_path, index_col=0,delimiter=",")
+        s1_feature_df = pd.read_csv(s1_path,index_col=0,delimiter=",")
+        self._load_data(s0_feature_df, s1_feature_df)
 
     def _load_data(self, s0_feature_df, s1_feature_df):
         # Extract the voice activity labels for s0 as the target labels
@@ -103,41 +231,54 @@ class MapTaskVADDataset(Dataset):
         return labels_df
 
 
-class MapTaskPauseDataset(Dataset):
+
+class MapTaskPauseDataset(MapTask):
+
+    HOLD_LABEL = 0
+    SHIFT_LABEL = 1
 
     def __init__(
         self,
-        paths,
+        data_dir,
         sequence_length_ms,
         min_pause_length_ms,
         max_future_silence_window_ms,
         s0_participant,
-        frame_step_size_ms
+        feature_set,
+        # TODO: Make this configurable when reader bugs are fixed.
+        # frame_step_size_ms : int = 10
+        force_reprocess = False
     ):
-        self.paths = paths
+
+        super().__init__(f"{data_dir}/maptask")
+
+        frame_step_size_ms = 10 # TODO: Remove hard coded value layer
+
+        self.data_dir = data_dir
         self.sequence_length_ms = sequence_length_ms
         self.min_pause_length_ms = min_pause_length_ms
         self.max_future_silence_window_ms = max_future_silence_window_ms
-        self.s0_participant = s0_participant
+        self.target_participant = s0_participant
         self.frame_step_size_ms = frame_step_size_ms
+        self.feature_set = feature_set
+        self.force_reprocess = force_reprocess
+
         # Calculated
         self.num_context_frames = int(sequence_length_ms / frame_step_size_ms)
         self.num_pause_frames = int(min_pause_length_ms / frame_step_size_ms)
         self.future_window_frames = int(
             max_future_silence_window_ms / frame_step_size_ms)
-        # Data Storage vars.
-        self.xs = []
-        self.ys = []
+
         self.num_silences = 0
         self.num_holds = 0
         self.num_shifts = 0
         self.num_pauses = 0
-        for s0_path, s1_path in paths:
-            s0_feature_df = pd.read_csv(s0_path, index_col=0,delimiter=",")
-            s1_feature_df = pd.read_csv(s1_path,index_col=0,delimiter=",")
-            assert len(s0_feature_df) == len(s1_feature_df)
-            pauses_df = self._load_data(s0_feature_df, s1_feature_df)
-            self.__prepare_items(s0_feature_df, s1_feature_df,pauses_df)
+
+        self.save_dir_path = data_dir
+        self.h5_filename = "pause_dataset.h5"
+        os.makedirs(self.save_dir_path,exist_ok=True)
+
+        self._prepare()
 
     def __len__(self):
         return len(self.xs)
@@ -161,7 +302,68 @@ class MapTaskPauseDataset(Dataset):
             f"s0_participant: {self.s0_participant}"
         )
 
-    def __prepare_items(self,s0_feature_df, s1_feature_df, pauses_df):
+    def _prepare(self):
+        if self._check_pause_exists() and not self.force_reprocess:
+            self._load_from_disk()
+        else:
+            paths = self.full_paths if self.feature_set == "full" \
+                else self.prosody_paths
+
+            s0_paths = paths[self.target_participant]
+            s1_paths = paths["f" if self.target_participant == "g" else "g"]
+            self.xs = []
+            self.ys = []
+            for s0_path, s1_path in zip(s0_paths, s1_paths):
+                self._load_apply_transforms(s0_path, s1_path)
+            # Save the dataset
+            self._save()
+        assert len(self.xs) == len(self.ys)
+
+    def _load_apply_transforms(self, s0_path, s1_path):
+        # TODO: Add multiprocessing here.
+        s0_feature_df = pd.read_csv(s0_path, index_col=0,delimiter=",")
+        s1_feature_df = pd.read_csv(s1_path,index_col=0,delimiter=",")
+        # Trim the dataframes to the same length
+        min_num_frames = np.min([len(s0_feature_df.index),len(s1_feature_df.index)])
+        s0_feature_df = s0_feature_df[:min_num_frames]
+        s1_feature_df = s1_feature_df[:min_num_frames]
+        assert len(s0_feature_df) == len(s1_feature_df)
+        pauses_df = self._prepare_pauses_df(s0_feature_df, s1_feature_df)
+        self._prepare_items(s0_feature_df, s1_feature_df,pauses_df)
+
+    def _check_pause_exists(self):
+        if os.path.isdir(self.save_dir_path) and \
+                os.path.exists(os.path.join(self.save_dir_path,self.h5_filename)):
+            with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'r') as hf:
+                return self.feature_set in hf and \
+                        self.target_participant in hf[self.feature_set] and \
+                        f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
+                            f"_{self.max_future_silence_window_ms}" in \
+                            hf[self.feature_set][self.target_participant]
+        return False
+
+    def _save(self):
+        group = f"{self.feature_set}/{self.target_participant}/"\
+            f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
+            f"_{self.max_future_silence_window_ms}"
+        # Save the xs and ys
+        with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'a') as hf:
+            if self.force_reprocess:
+                del hf[self.feature_set][self.target_participant]\
+                    [f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
+                    f"_{self.max_future_silence_window_ms}"]
+            hf.create_dataset(f"{group}/xs", data=np.asarray(self.xs))
+            hf.create_dataset(f"{group}/ys", data=np.asarray(self.ys))
+
+    def _load_from_disk(self):
+        with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'r') as hf:
+            group = hf[self.feature_set][self.target_participant]
+            group = group[f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
+                f"_{self.max_future_silence_window_ms}"]
+            self.xs = group["xs"][:]
+            self.ys = group["ys"][:]
+
+    def _prepare_items(self,s0_feature_df, s1_feature_df, pauses_df):
         # Collect the data for both models
         s0_s1_df = pd.concat([s0_feature_df.loc[:,s0_feature_df.columns \
             != 'frameTime'],s1_feature_df.loc[:,s1_feature_df.columns != 'frameTime']],axis=1)
@@ -186,7 +388,7 @@ class MapTaskPauseDataset(Dataset):
             self.xs.append((x_s0,x_s1))
             self.ys.append((int(previous_speaker), int(hold_shift_label), int(next_speaker)))
 
-    def __prepare_pauses_df(self, s0_feature_df, s1_feature_df):
+    def _prepare_pauses_df(self, s0_feature_df, s1_feature_df):
         # Obtain frame indices where both speakers are speaking.
         s0_va_idxs =  np.where(s0_feature_df['voiceActivity'] == 1)[0]
         s1_va_idxs =  np.where(s1_feature_df['voiceActivity'] == 1)[0]
@@ -241,5 +443,3 @@ class MapTaskPauseDataset(Dataset):
         # if self.save_dir != None:
         #     pauses_df.to_csv("{}/{}_pauses_df.csv".format(self.save_dir, dialogue))
         return pauses_df
-
-

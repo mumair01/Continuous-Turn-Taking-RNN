@@ -2,14 +2,12 @@
 # @Author: Muhammad Umair
 # @Date:   2022-08-26 18:35:51
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-22 13:21:36
+# @Last Modified time: 2022-12-24 08:38:33
 
 
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-
-
 
 class VoiceActivityPredictor(pl.LightningModule):
 
