@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 10:06:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-24 14:31:39
+# @Last Modified time: 2022-12-24 15:37:20
 
 
 import sys
@@ -35,32 +35,33 @@ class MapTask(Dataset):
         self.prosody_paths = None
 
         self.frame_step_size_ms = 10
-        self.reader = reader = MapTaskDataReader(
-            frame_step_size_ms=self.frame_step_size_ms,
-            num_conversations=10 # For testing
-        )
+
         self._download_raw()
 
     def _download_raw(self):
 
+        reader = MapTaskDataReader(
+            frame_step_size_ms=self.frame_step_size_ms,
+            num_conversations=10 # For testing
+        )
         if not self._check_exists("full"):
-            self.reader.prepare_data()
-            self.full_paths = self.reader.setup(
+            reader.prepare_data()
+            self.full_paths = reader.setup(
                 variant="full",
                 save_dir=self.base_data_dir
             )
         else:
-            self.full_paths = self.reader.load_from_dir(
+            self.full_paths = reader.load_from_dir(
                 self.full_feature_dir
             )
         if not self._check_exists("prosody"):
-            self.reader.prepare_data()
-            self.prosody_paths = self.reader.setup(
+            reader.prepare_data()
+            self.prosody_paths = reader.setup(
                 variant="prosody",
                 save_dir=self.base_data_dir
             )
         else:
-            self.prosody_paths = self.reader.load_from_dir(
+            self.prosody_paths = reader.load_from_dir(
                 self.prosody_feature_dir
             )
 

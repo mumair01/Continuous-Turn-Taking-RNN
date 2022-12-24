@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-08-26 18:35:51
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-24 08:38:33
+# @Last Modified time: 2022-12-24 15:42:08
 
 
 import pytorch_lightning as pl
@@ -22,7 +22,7 @@ class VoiceActivityPredictor(pl.LightningModule):
         weight_decay : float = 0.001
     ):
         super().__init__()
-
+        self.save_hyperparameters()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.out_features = out_features
@@ -98,7 +98,7 @@ class VoiceActivityPredictor(pl.LightningModule):
         # x.type(torch.FloatTensor) # NOTE: Should remove
         out = self.forward(x) # out shape: (batch_size, N)
         loss = self.loss_fn(y, out)
-        self.log({"train/loss" : loss})
+        self.log("train_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -108,7 +108,16 @@ class VoiceActivityPredictor(pl.LightningModule):
         x, y = batch
         out = self.forward(x)
         loss = self.loss_fn(y, out)
-        self.log({"eval/loss" : loss})
+        self.log("val_loss", loss)
+
+    def test_step(self, batch, batch_idx):
+        """
+        Calculate and log the loss for a single validation batch.
+        """
+        x, y = batch
+        out = self.forward(x)
+        loss = self.loss_fn(y, out)
+        self.log("test_loss", loss)
 
     def configure_optimizers(self):
         # This is the same optimizer used in the paper.

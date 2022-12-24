@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-24 14:32:30
+# @Last Modified time: 2022-12-24 15:39:23
 
 import sys
 import os
@@ -21,11 +21,11 @@ from .dsets import MapTaskVADDataset, MapTaskPauseDataset
 
 from utils import get_cache_data_dir
 
-CACHE_DIR = os.path.join(get_cache_data_dir, "maptask")
-
 
 
 # TODO: Add asserts for function args.
+# NOTE: Num workers is 0 here because Maptask reader cannot be pickled.
+# Either remove it from the dataset or keep workers at 0.
 class MapTaskVADataModule(pl.LightningDataModule):
 
     def __init__(
@@ -98,7 +98,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
         return DataLoader(
             self.val_dset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             drop_last=True,
             pin_memory=True,
             num_workers=0
@@ -108,7 +108,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
         return DataLoader(
             self.test_dset,
             batch_size=1,
-            shuffle=True,
+            shuffle=False,
             drop_last=True,
             pin_memory=True,
             num_workers=0
@@ -188,7 +188,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         return DataLoader(
             self.val_dset,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             drop_last=True,
             pin_memory=True,
             num_workers=0
@@ -198,7 +198,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         return DataLoader(
             self.test_dset,
             batch_size=1,
-            shuffle=True,
+            shuffle=False,
             drop_last=True,
             pin_memory=True,
             num_workers=0

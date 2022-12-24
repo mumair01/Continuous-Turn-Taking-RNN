@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-24 09:24:42
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-24 09:50:09
+# @Last Modified time: 2022-12-24 15:27:22
 
 import sys
 import os
@@ -15,11 +15,12 @@ PROJECT_CONFIG_PATH = os.path.join(PROJECT_ROOT_DIR, "src/configs/project.toml")
 CONFIG_DATA = toml.load(PROJECT_CONFIG_PATH)
 
 def add_root_to_path(func):
-    return os.path.join(PROJECT_ROOT_DIR, func())
+    return lambda : os.path.join(PROJECT_ROOT_DIR, func())
 
 def get_root_path():
     """Returns the path to the root of the repo"""
     return PROJECT_ROOT_DIR
+
 
 def reset_dir(path):
     if os.path.isdir(path):
