@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-08-26 18:35:51
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-24 15:42:08
+# @Last Modified time: 2022-12-24 20:08:08
 
 
 import pytorch_lightning as pl

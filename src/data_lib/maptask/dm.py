@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-24 15:39:23
+# @Last Modified time: 2022-12-25 14:24:57
 
 import sys
 import os
@@ -33,7 +33,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
         data_dir,
         sequence_length_ms,
         prediction_length_ms,
-        frame_step_size_ms,
+        # frame_step_size_ms,# TODO: Enable after bugfix
         feature_set,
         target_participant = "f",
         batch_size = 32,
@@ -41,6 +41,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
     ):
         super().__init__()
         # Vars.
+        frame_step_size_ms = 10
         self.sequence_length_ms = sequence_length_ms
         self.prediction_length_ms = prediction_length_ms
         self.target_participant = target_participant
