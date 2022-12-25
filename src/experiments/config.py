@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-24 20:55:30
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-25 14:37:17
+# @Last Modified time: 2022-12-25 15:22:05
 
 import sys
 import os
@@ -34,7 +34,7 @@ pbuilds = make_custom_builds_fn(zen_partial=True, populate_full_signature=True)
 # DataModules
 ###############
 
-
+# TODO: The batch size should be changed to 1 later.
 # Configuring fully with default values, which can and should be overwritten later.
 MaptaskVADMConf = builds(
     MapTaskVADataModule,
@@ -73,7 +73,7 @@ FullModelConf = pbuilds(
 # TODO: Verify dims.
 ProsodyModelConf = pbuilds(
     VoiceActivityPredictor,
-    input_dim=10, # This is based on the no. of features of the full dataset.
+    input_dim=12, # This is based on the no. of features of the full dataset.
     hidden_dim=40, # Number of features of the hidden state
     out_features=MISSING, # int(prediction_length_ms/frame_step_size)
     num_layers=1
@@ -95,4 +95,5 @@ cs = ConfigStore.instance()
 cs.store(group="dm", name="maptaskPause", node=MaptaskPauseDMConf)
 cs.store(group="dm", name="maptaskVA", node=MaptaskVADMConf)
 cs.store(group="model", name="FullModel", node=FullModelConf)
+cs.store(group="model", name="ProsodyModel", node=ProsodyModelConf)
 cs.store(group="trainer", name="trainer", node=TrainerConf)

@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-25 14:24:57
+# @Last Modified time: 2022-12-25 15:02:30
 
 import sys
 import os
@@ -40,6 +40,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
         train_split = 0.8
     ):
         super().__init__()
+        self.save_hyperparameters()
         # Vars.
         frame_step_size_ms = 10
         self.sequence_length_ms = sequence_length_ms
@@ -131,6 +132,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         train_split = 0.8
     ):
         super().__init__()
+        self.save_hyperparameters()
         frame_step_size_ms = 10
         self.sequence_length_ms = sequence_length_ms
         self.min_pause_length_ms = min_pause_length_ms
