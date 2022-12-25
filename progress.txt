@@ -1,0 +1,538 @@
+DATE: 5/8/22
+- Created project sub-folder and README.
+
+DATE: 5/19/22
+-  Created maptask_data_poc notebook to extract relevant features from
+    the dataset features extracted from the data pipeline.
+    - Steps so far:
+        1. For each feature file, generate output label files with voice
+            annotations for the next N frames.
+        2. Prepare a dataset such that the the input to the model is:
+            Features for S0 and S1 --> Target labels for S0.
+            - This step is still in progress.
+
+DATE: 5/28/22
+    - Resuming work on this project after week-long break.
+    - Work completed previously,
+        1. Data Pipeline for Skantze 2017
+            - Basic features obtained using the pipeline in the Data-Pipeline repo.
+        2. Model specific data preparation
+            - Model specific training labels created in maptask_data_poc notebook.
+    - Goal for today:
+        1. Create the data class for the data using pytorch.
+        2. Test the data pipeline with a basic RNN.
+        3. Construct RNN as used by Skantze 2017.
+    - Progress today:
+        1. Create the data class for the data using pytorch.
+            - Did research on how to create a custom dataset in pytorch for
+                next sequence prediction.
+                - It looks like, in the custom dataset, we need to create
+                    SEQUENCES from each dialogue (the length of the sequence
+                    is a hyperparameter) and use it to predict the next N sequences.
+            - Created a basic custom dataset class.
+            - NOTE: Discovered an issue in the data from the pipeline where the
+                last few frames do not have a pos tag and some frameTimes are repeated.
+                THIS NEEDS TO BE FIXED LATER!!!
+            - Created basic data loader to load the class.
+    - TODO:
+        2. Test the data pipeline with a basic RNN.
+        3. Construct RNN as used by Skantze 2017.
+
+DATE: 5/30/22
+
+- Progress
+    - Created a basic LSTM Model that uses the custom MapTask dataclass and makes VA
+        predictions for some frames based on the last 1200 frames (each 50ms) long.
+    - Changed the shape of the y values in a datapoint in the dataset to only select the last VA activations in the sequence.
+- Issues
+    - The model was not predicting the right values because the shape of the
+        output was not correct.
+    - Not sure whether the method for calculating the epoch loss is correct.
+    - Not sure how to run the test set and generate test errors.
+    - Attempted to use TensorBoard for real-time visualization but unable to do that in Jupyter Notebook.
+- TODO:
+    - Need to recreate the model to generate the correct output.
+    - Write more robust training methods to reliably train the data and obtain
+        comparable metrics.
+    - Implement a method to generate a validation set that can be used.
+    - The data preparation (i.e., shifting the VA annotations) should be done
+        in the data class itself instead of proper to feeding the data to that class.
+    - Need to resolve last few frames error ni the data pipeline and develop an
+         end to end method for generating audio features with different timesteps.
+
+DATE: 5/31/22
+- Goals
+    - Recreate the LSTM model notebook to generate the correct output from
+        the model.
+    - Implement a method to generate a validation set that can be used.
+    - Write more robust training methods to reliably train the data and obtain
+        comparable metrics.
+- Progress:
+    - Created a method for generating three splits: train, validation, and test.
+    - Created a robust training method that generates the training and validation loss,
+        and saves the model at some number of iterations.
+
+- TODOs:
+    - Need to create loss per batches as the model is going through a single epoch.
+    - Need to debug why the model produces some NaN values for the test dataset.
+    - Need to determine evaluation methods for the test dataset.
+
+DATE: 6/1/22
+- Goals:
+    - Need to debug why the model produces some NaN values for the test dataset.
+    - Need to determine evaluation methods for the test dataset.
+    - Need to retrain the model and test to ensure that it is making
+        expected predictions.
+- Progress
+    - Maptask dataset
+        - Moved the skantze data generation pipeline from Data-Pipeline repo. to here.
+        - There were some issues with the data pipeline:
+            1. The files had non-unique frameTimes - unique frame times should be an invariant.
+            2. The dataset was not being checked for nan values.
+            3. There was an unknown 'name' column which is also removed.
+        - Regenerated the audio feature dataset from the maptask corpus
+            - This took a while as opensmile had to run on all the files.
+
+
+DATE: 6/2/22
+- Goals:
+    - Update the Skantze maptask data pipeline code such that it produces
+        verified data with no nan values.
+    - Re-generate the data for the Skantze 2017 pipeline.
+    - Retrain the models with the updated dataset and ensure that expected
+        results are being produced.
+- Progress
+    - MapTask Skantze data pipeline update:
+        - Moved the Skantze data pipeline to the TRP-Modeling repo. + refactoring
+            the original code to make sure there are no repeating frame times and that
+            all the feature dataframes have the same length.
+        - Refactored the feature functions to make sure that there are no nan
+            values that are introduced during feature extraction.
+        - Made sure that there are no repeating time frames.
+    - Regenerated the full and prosody feature sets using the data pipeline.
+    - Retraining Skantze2017 model
+        - It does look like the nan value errors have been resolved.
+        - It looks like the model training error does not decrease after the first
+            epoch and the r2 score is negative i.e., the model does not fit the
+            data well --> This needs to be investigated.
+        - My hunch is that the model is training correctly but I need to look
+            into more sophisticated error metrics.
+
+
+DATE: 6/3/22
+- Progress:
+    - Evaluation metrics
+        - The original paper uses MAE across all 60 output nodes at all times
+            as a performance measure --> Attempting to implement this.
+        - Evaluation qualitative results:
+            - Just by creating models for different prediction lengths, it does
+                look like the resultant models follows the trend that the prediction
+                MAE on the test set is lower for smaller prediction windows compared
+                to larger ones i.e., 250 ms to 1000ms.
+        - Model comparison results
+- TODO:
+    - Create a separate notebook for model comparison experiments.
+    - Setup the prediction at different tasks to make sure that the model is
+        performing as expected from the paper.
+
+DATE: 6/5/22
+- Goals:
+    1. Finalize notebook to reproduce results similar to Figure 3.
+    2. Start generating test datasets for prediction at pauses.
+    3. Run the prediction at pauses experiment to determine if the model is
+        working as per the Skantze2017 paper.
+
+- Progress
+    1. Finalize notebook to reproduce results similar to Figure 3.
+        - Implemented methods to replicate the experiment in Section 4.1. of
+            the paper.
+        - Had to incorporate methods to save the models as the jupyter kernerl
+            would die otherwise.
+        - The experiment now is able to vary the feature set, the sequence length,
+            the prediction length, model architecture etc.
+        - Results:
+                1. The results look very similar to Skantze's original results with the
+                    some differences.
+                2. The training error at epoch zero is higher
+                    - This might be due to the variation in input features as
+                        I am using GeMaps.
+                3. There is less variation in the errors
+                    - This might be either because I have only run the experiment
+                        for 5 eopchs as opposed to 100.
+                4. The overall TREND in results for the full set seems to be as
+                    expected.
+                5. There is very little difference b/w dataset in MAE b/w the prosody
+                    and the full dataset.
+
+        - TODO:
+            - Find a better way of representing the data i.e., the save file format
+                consider using a single file to save all the models and HD5 dataset for the
+                losses.
+            - Implement a method of saving the models etc. and restarting the
+                 experiment later - this is probably better than attempting to use
+                 slurm.
+            -  Maybe: Need to incorporate GPUs and potentially run this on Google Colab
+                instead.
+
+
+DATE: 6/6/22
+- Goals:
+    1. Streamline the data pipeline in the experiments notebook.
+    2. Replicate experiment 4.1 with a greater number of epochs.
+    3. Generate data required for experiments 4.2 and 4.3.
+
+- Progress:
+    1. Streamline the data pipeline in the experiments notebook.
+        - Further separated methods to train, save, and evaluate experiment 4.1
+            into smaller methods.
+        - The pipeline now saves data much more efficiently as a single hdf5
+            file + the models are only saved at the last epoch + model details
+            are inferred from the filename and only the state dict is saved.
+        - Re-running the experiments to make sure that the new methods work.
+        - Added methods to save experiment 4.1 results.
+    2. Replicate experiment 4.1 with a greater number of epochs.
+        - Ran
+    3. Generate data required for experiments 4.2.
+        - In this experiment, we make prediction at pauses i.e., a data
+            notebook should be made that can extract pause windows of varying
+            lengths from the maptask dataset.
+        - Thoughts on how to do this:
+            - We need voice activity annotations for each file to identify the
+                pauses in each conversation, for each speaker (since we have f, g
+                files).
+            - How many classes of pauses are there?
+                - Two classes --> Shift and Hold.
+            - What is the representation of an identified pause?
+
+
+DATE: 6/7/22
+- Goals:
+    - Replicate experiment 4.2 from the Skantze2017 paper.
+
+- Progress on experiment 4.2:
+    - Created a separate copied notebook to experiment with and generate
+        code for experiment 4.2.
+    - Experiment goal:
+        - At the end, we want to have a graph of the F-Score of turn-shifts at
+            pauses for two models when applied to the test set.
+        - NOTE: This shift vs. hold is a classification task as the data
+            is separated into shift vs. hold categories.
+        - We use a model that has already been trained on the voice activity
+            detection task, which has some issues:
+                1. The model has a specific input dim, hidden dim, and output dim,
+                    which implies that the number of input features, and the
+                    prediction length have to be constants for the data fed to
+                    the model.
+                2. Since the model is an LSTM, we can vary the sequence length
+                    in real-time.
+                    - IMP: Not sure what the effect of this will be since the
+                        model was trained on a specific sequence length.
+        - The two models compared are the full model vs. the prosody model.
+
+    - Structure of the input data (original experiment):
+        1. N Frames of silence since last speaker was speaking.
+        2. Select instances where only one speaker continued after the next K frames.
+        IMP: Not sure what the expected sequence length for the model is.
+
+    - Inferences made by the model:
+        1. Average the predictions made in the FIRST SECOND (this is a var.)
+            made by the two networks associated with each speaker --> This
+            gives two values for each individual network, which is trained
+            for different speakers.
+            NOTE: This means we need to use a classification model that is trained
+                to make predictions for at least one second.
+        2. Network with the highest average score is selected as the next speaker.
+
+    - Model evaluation:
+        1. Each model is evaluated based on the F-score of the classification
+            task.
+        - NOTE: In this case, we have both the X subset and Y subset as part of
+            the test set.
+
+DATE: 6/8/22
+- Goals:
+    - Replicate experiment 4.2 from the Skantze2017 paper.
+
+- Progress on experiment 4.2
+    - Continuing to develop dataset as before.
+    - Was able to generate separate lists from the dataset where there is a
+        start index, a speaker switch or hold, for both speakers individually.
+    - We will use these two lists separately because the original experiment
+        uses a separate network for each speaker.
+    - Finally, since the sequence length can be varies when making predictions,
+        the primary goal is to make predictions for the frames after
+        LAST SPEECH FRAME + NUM SILENCE FRAMES.
+    - I think that the original paper does not make a distinction as which
+    speaker is causing the shift or the hold.
+
+    - Binary label (Hold vs. Shift) prediction notes:
+        - After some discussion, have finalized that:
+            1. The test set data needs:
+                a. previous speaker.
+                b. Pause end frame index,
+                c. Hold or shift label
+                d. Next speaking frame index
+            2. During prediction,
+                - The data will be modified for and fed to each model (s0 vs. s1).
+                - The models will basically output a value and a comparison
+                    b/w the values will give the next speaker label.
+                - The predicted speaker label will then be compared against the
+                    previous speaker label and the hold or shift to determine
+                    whether the binary classification is correct.
+
+DATE: 6/10/22
+- Goals:
+    - Replicate experiment 4.2 from the Skantze2017 paper.
+- Progress on experiment 4.2
+    - Created a Dataclass that should have the correct test set for this experiment.
+    - Resolved an issue where the test set length was different every time.
+    - Created some example methods to generate the results as required by the experiment.
+    - Trained two models for speaker f and g and made a basic classification method
+        that also generates the F1 score.
+    - Preliminary results
+        - It seems that the model is producing a high F-1 score because the
+            classes are not balanced (hold vs. shift).
+        - The Matthews correlation coefficient is a measure that can deal with
+            this class imbalance but it shows a very low value.
+    - Attempting to standardize the code ad bit, make the classes more balanced,
+        and re-run the experiment.
+    - Bugfix where some sequences has one extra data point (ex. 1201).
+
+DATE: 6/11/22
+- Finalizing experiment 4.2 and fixing bugs:
+    - Remaking the training methods to be more efficient.
+    - Bug:
+        - The number of shifts / holds in the pause dataset do NOT match the
+            number of pause / shifts that are detected in the prediction method.
+        - This may be an issue with the prediction method --> Investigating.
+        - Realized that this issue was in the prediction method, which was not
+            predicting HOLD or SHIFT, but instead the speaker label of the next
+            speaker.
+    - F1-score calculation issue:
+        - It seems that sklearn makes the implicit assumption that 1 is the
+            positive class in the F-1 method.
+        - Therefore, in our case, since the majority class is HOLD, HOLD = 0 and
+            SHIFT = 1 and we are obtaining F-1 score for SHIFTS.
+        - NOTE: Since the class labels are binary, we need to set average="weighted"
+            in sklearn.metrics.f1_score()
+    - Constructing pipeline for the full experiment.
+        - It seems that I might have to remake the training method at some point
+            because it gets very annoying to load the models etc.
+        - For now, the models are all giving the same F-1 score but this is
+            probably because something is not getting loaded correctly.
+    - TODO:
+        - Need to fix the same F-score issue tomorrow.
+
+DATE: 6/13/22
+- Progress:
+    1. F-1 score issue --> All scores are the same.
+        - Running exp 4.2 produces the same F-1 score for all the models, which
+            is not expected behavior --> This might be due to the correct models
+            not being loaded.
+        - This issue is not resolved - it seems like any model is producing the
+            same f-score 0.69...
+        - Attempt 1:
+            - Maybe there really is very little variance in the model F-1 scores
+                for a few epochs and I can train a bit more epochs to see whether
+                there is variation.
+            - This does not work.
+        - Attempt 2:
+            - Testing whether there is an issue with the train method - maybe
+                it's not retuning the right thing.
+
+        ---- NOTE: Below have not been tried yet.
+
+        - Attempt 3:
+            - Maybe the learning rate during model training is too high.
+
+        - Attempt 4:
+            - Maybe the load method is not working correctly? That is the only
+                thing I can think of.
+            - Maybe I can compare the state dictionaries somehow?
+
+        - NOTE: Varying any parameter does not cause any change --> This is really
+            strange and may be that the correct models are just not being used.
+
+        - NOTE 2: There seems to be an issue with the pause dataset which is causing
+            incorrect predictions - need to fix it.
+
+    2. Re-making model load and save methods to make sure that the parameters
+        of the model do not need to be re-read from the filenames.
+        - Changing the save / load methods so that I do not need to remember
+            the model parameters.
+        - Saving an info. dictionary with the model that will contain information
+            about the various model parameters.
+        - Changed training methods to accommodate the new save method.
+        - Created a loading method as well.
+
+    3. Code reproducibility across runs.
+        - This seems to be fixed now, the issue was in the train_test_split
+            method not producing consistent splits.
+        - It seems that the train_test_split method will also automatically
+            shuffle.
+
+- Things to work on:
+    - Does the prediction dataset even need to know about which type of dataset
+    it is using since it only cares about VA activations?
+
+DATE: 6/14/22
+- Goals:
+    1. Investigate and fix what is causing the F1 score issue in experiment 4.2.
+
+- Progress
+    1. F1 score issue fixes:
+        - Here are some ideas to try:
+            1. Maybe the learning rate during model training is too high.
+            2. Maybe the load method is not working correctly? That is the only
+                    thing I can think of.
+                - Maybe I can compare the state dictionaries somehow?
+
+        - Observations:
+            1. Varying any parameter does not cause any change --> This is really
+                strange and may be that the correct models are just not being used.
+            2. There seems to be an issue with the pause dataset which is causing
+                incorrect predictions - need to fix it.
+            3. The model for speaker g in general has a higher training error
+                than the speaker f model - which might be causing issues.
+                - In general, there is much more speech by speaker g than f.
+                    Therefore, it takes much longer for the f model to converge
+                    than the g model.
+                - This might explain why the model is always biased for early
+                    epochs until the model error decreases.
+                - NOTE: Skantze never specifies which speaker he is using in
+                    experiment 4.1 - he should have had graphs from the
+                    perspective of both speakers.
+
+        - Concrete progress - F1 score issue
+            - Changed the training to run with speaker g and observed that
+                there is much more speech in the speaker g files and that
+                these take longer to converge.
+            - Changed the test Exp 4.2 to run on the prosody set with a smaller
+                context for faster training and to observe the general trend.
+            - Running the Exp 4.2 test with 30 epochs and saving the models to
+                observe what the issue is.
+            - IMP: Discovered that the predict function was wrong and that
+                I was actually predicting the next speaker instead of the
+                hold-shift label, which was leading to a very low F1 score.
+            - For the prosody model with 30 epochs, F1 score = 0.6677614685618891
+            - Re-running with 1 epoch to see whether the F1 score are different
+                --> THEY SHOULD BE DIFFERENT!
+                - F1 score for prosody model with 1 epochs, F1 score = 0.2781507107233838
+                - F1 score for prosody model with 2 epochs, F1 score = 0.5655866090574366
+            - It seems that the issue is resolved!!!!!!!
+                - There were multiple factors including wrong sequence size
+                    in the pause dataset.
+                - Also, the predict method was wrong.
+                - IMP: Lesson --> Print data more and always visually verify.
+            - Created a method to save the Pause Dataset.
+            - Working on implementing the final experiment.
+
+        - Issue --> It seems that the models are not getting the same F1scores
+                in the experiment as when they would have been individually
+                trained to a point --> This is probably because the models are
+                not being saved probably OR the state dictionary continues to be
+                updated.
+            - Attempt 1 --> Loading the models individually and checking score.
+                - Deep copying the models individually seems to solve the issue
+                    during training.
+            - It seems that this issue still exists for the full models...
+                - Maybe this is because the optimizer continues to
+                optimize the parameters of the model that is given to it.
+            - IMP: It seems that the big issue was that the save method
+                was returning a local method called save_fn - but this was
+                causing a naming conflict with the function argument
+                in the jupyter notebook - I think this is a jupyter
+                specific question --> This did not completely solve the issue.
+- TODO:
+    1. Experiment 4.2:
+        a. Determine why the pause dataset is producing results that are not
+            constant given a constant seed.
+            - Develop a method to print the dataset as a dataframe.
+        b. Refactor the notebook to make it easier to perform the experiment,
+            right not, the notebook is getting cluttered.
+        c. Run the full experiment 4.2
+
+    2. Run experiment 4.1 for the g speaker since there is more speech there.
+        - Refactor the experiment 4.2 notebook with new train / save methods etc.
+            before running it.
+
+DATE: 6/15/22
+- Goals:
+    1. Generate Experiment 4.2 results
+    2. Start creating the dataset for experiment 4.3.
+
+- Progress:
+    1. Model save / load issues --> It seems that the saved model is not the
+        same as the loaded model because the F1 scores are very different.
+
+        - NOTE: If we want to compare to models (e.g., one is loaded and
+            one has just been initialized), we need to make sure the initial
+            layer initialization if the same, otherwise the results can be
+            different - even if both modsels are untrained.
+        - When training models for experiment 4.2, all models are initialized
+            using the global seed.
+        - It seems that the correct models are being saved and loaded.
+
+        - UPDATE --> Training for 20 epochs shows some promising F-1 scores on
+                    a subset of the pause dataset.
+
+    2. Adding GPU support to model / tensors if the device is available.
+        - Added methods that support cuda.
+        - Basically, the dataloaders and model have to be moved to the device
+
+    3. Moving and training notebook on Google Colab:
+        - Uploading all data to drive.
+        - Modifying the notebook to integrate with colab.
+        - This does not work because not enough RAM --> Need to implement
+            this on the slurm first.
+
+    4. Starting to implement the POC notebook for experiment 4.3.
+        - Pausing this because I want to think about next steps.
+
+    5. Implementing Experiment 4.2 on the slurm to train for a larger number of
+        epochs --> Can present these results to J.P.
+
+- TODO:
+    1.Think of next steps in terms of the research question.
+    2. Try using lazy loading in the jupyter notebook and see whether that works
+        on colab, since porting to scripts will take time.
+
+DATE: 6/20/22
+    - Progress:
+        1. Refactoring the original code to make it more extensible.
+            - Created a MapTask preprocess notebook that contains code to
+                generate the processed maptask dataset.
+            - Created a MapTask Dataset POC notebook that is able to generate
+                the Dataset required for training the Skantze model.
+                - It seems that lazy loading is super hard to implement because
+                    not only do we have multiple csv files, but there are
+                    many data points per csv file, making it super difficult
+                    to assign an index to each datapoint using a map-style dataset.
+                - Decided to use the MapStyle dataset for now.
+    - TODO:
+        1. Fix the maptask data scripts using the notebook - they currently
+        return null values.
+
+DATE: 6/21/22
+    - Progress
+        1. Refactoring the modeling notebook.
+        2. Refactoring exp. 4.1 notebook.
+            - Needed to copy relevant parts of code from the previous notebook.
+            - However, this code will not be modified in this notebook and there
+                is a clear separation of code.
+        3. Refactoring exp 4.2 notebook
+            - Separating into multiple notebooks.
+        4. Running Experiment 4.2 again after refactoring.
+
+DATE: 6/27/22
+    - Progress:
+        1. Fixing the prediction code in exp 4.2 POC notebook.
+            - The experiment seems to make sense for 30 epochs - need to
+                run it for a larger number of epochs to determine if it actually
+                produces expected results.
+            - Running experiment up to 60 epochs.
+        2. Refactoring the maptask data scripts to reflect the changes in the notebooks.
+
+DATE: 6/29/22
+- Progress:
+    1. Finalizing existing notebooks and adding GPU support.
