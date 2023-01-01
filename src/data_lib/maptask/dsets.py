@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 10:06:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-01 13:16:11
+# @Last Modified time: 2023-01-01 21:48:03
 
 
 import sys
@@ -205,7 +205,7 @@ class MapTaskVADDataset(MapTask):
         # Check common frametimes
         assert dfs[0]['frameTime'].equals(dfs[1]['frameTime'])
 
-        # Concat to a larget vector
+        # Concat to a larger vector
         # TODO: This should be 130 for the full dataset but is currently more.
         s0_s1_df = pd.concat(dfs,axis=1)
         assert not s0_s1_df.isnull().values.any()
@@ -256,10 +256,20 @@ class MapTaskVADDataset(MapTask):
         return labels
 
 
+# TODO: Test this class. Add ability to save pdfs.
 class MapTaskPauseDataset(MapTask):
 
     HOLD_LABEL = 0
     SHIFT_LABEL = 1
+    DATASET_NAME = "pause_dataset"
+    PAUSE_DF_COLUMNS = [
+        'pauseStartFrameTime',
+        'previousSpeaker',
+        'pauseEndFrameIndex',
+        'nextSpeechFrameIndex',
+        'holdShiftLabel',
+        'nextSpeaker'
+    ]
 
     def __init__(
         self,
@@ -274,10 +284,9 @@ class MapTaskPauseDataset(MapTask):
         force_reprocess = False
     ):
 
-        super().__init__(f"{data_dir}/maptask")
+        super().__init__(data_dir)
 
         frame_step_size_ms = 10 # TODO: Remove hard coded value layer
-
         self.data_dir = data_dir
         self.sequence_length_ms = sequence_length_ms
         self.min_pause_length_ms = min_pause_length_ms
@@ -286,33 +295,40 @@ class MapTaskPauseDataset(MapTask):
         self.frame_step_size_ms = frame_step_size_ms
         self.feature_set = feature_set
         self.force_reprocess = force_reprocess
-
         # Calculated
         self.num_context_frames = int(sequence_length_ms / frame_step_size_ms)
         self.num_pause_frames = int(min_pause_length_ms / frame_step_size_ms)
         self.future_window_frames = int(
             max_future_silence_window_ms / frame_step_size_ms)
-
+        # Initialize
         self.num_silences = 0
         self.num_holds = 0
         self.num_shifts = 0
         self.num_pauses = 0
+        self.length = 0
 
+        # Create output dir
         self.save_dir_path = data_dir
-        self.h5_filename = "pause_dataset.h5"
         os.makedirs(self.save_dir_path,exist_ok=True)
+        self.dset_save_path = os.path.join(data_dir,f"{self.DATASET_NAME}.h5")
+        self.group_name = f"{self.feature_set}/{self.target_participant}/"\
+            f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
+            f"_{self.max_future_silence_window_ms}"
 
         self._prepare()
 
     def __len__(self):
-        return len(self.xs)
+        return self.length
 
     def __getitem__(self, idx):
         if idx > self.__len__():
             raise Exception
         # NOTE: xs has target speaker features concatenated with non-target speaker features.
         # ys is the previous speaker, hold / shift label, and the next speaker.
-        return self.xs[idx], self.ys[idx]
+        with  h5py.File(self.dset_save_path,'r') as f:
+            xs_group = f.require_group(f"{self.group_name}/xs")
+            ys_group = f.require_group(f"{self.group_name}/ys")
+            return np.asarray(xs_group[f"{idx}"]), np.asarray(ys_group[f"{idx}"])
 
     def __repr__(self):
         return (
@@ -327,143 +343,160 @@ class MapTaskPauseDataset(MapTask):
         )
 
     def _prepare(self):
-        if self._check_pause_exists() and not self.force_reprocess:
-            self._load_from_disk()
-        else:
-            paths = self.full_paths if self.feature_set == "full" \
-                else self.prosody_paths
 
-            s0_paths = paths[self.target_participant]
-            s1_paths = paths["f" if self.target_participant == "g" else "g"]
-            self.xs = []
-            self.ys = []
-            for s0_path, s1_path in zip(s0_paths, s1_paths):
-                self._load_apply_transforms(s0_path, s1_path)
-            # Save the dataset
-            self._save()
-        assert len(self.xs) == len(self.ys)
+        # If the h5 file already exists, simply load from the file.
+        if not self.force_reprocess and os.path.isfile(self.dset_save_path) and \
+            self.group_name in h5py.File(self.dset_save_path,'r'):
+            f = h5py.File(self.dset_save_path,'r')
+            xs_group = f.require_group(f"{self.group_name}/xs")
+            ys_group = f.require_group(f"{self.group_name}/ys")
+            assert len(xs_group.keys()) == len(ys_group.keys())
+            self.length = len(xs_group.keys())
+        else:
+            # Otherwise, generate all the data and save it in the underlying
+            # file at the appropriate group.
+            s0_paths = self.paths[self.feature_set][self.target_participant]
+            s1_paths = self.paths[self.feature_set]\
+                ["f" if self.target_participant == "g" else "g"]
+
+            # Open the file to append.
+            f = h5py.File(self.dset_save_path,'a')
+            # If the groups already exists, delete it.
+            if self.group_name in f:
+                del f[self.group_name]
+
+            # Create the groups
+            xs_group = f.require_group(f"{self.group_name}/xs")
+            ys_group = f.require_group(f"{self.group_name}/ys")
+
+            for (s0_path, s1_path) in zip(s0_paths, s1_paths):
+                # Get the xs and ys for these convs.
+                xs, ys = self._load_apply_transforms(s0_path, s1_path)
+                for i in range(xs.shape[0]):
+
+                    # Add this to the appropriate index
+                    xs_group.create_dataset(f"{self.length + i}",data=xs[i])
+                    ys_group.create_dataset(f"{self.length + i}",data=ys[i])
+                self.length += xs.shape[0]
+
+    #############
+    # Methods to apply transformations on the underlying dataset.
+    #############
 
     def _load_apply_transforms(self, s0_path, s1_path):
-        # TODO: Add multiprocessing here.
-        s0_feature_df = pd.read_csv(s0_path, index_col=0,delimiter=",")
-        s1_feature_df = pd.read_csv(s1_path,index_col=0,delimiter=",")
-        # Trim the dataframes to the same length
-        min_num_frames = np.min([len(s0_feature_df.index),len(s1_feature_df.index)])
-        s0_feature_df = s0_feature_df[:min_num_frames]
-        s1_feature_df = s1_feature_df[:min_num_frames]
-        assert len(s0_feature_df) == len(s1_feature_df)
-        pauses_df = self._prepare_pauses_df(s0_feature_df, s1_feature_df)
-        self._prepare_items(s0_feature_df, s1_feature_df,pauses_df)
+        # Load the dataframes
+        dfs = (
+            pd.read_csv(s0_path, index_col=0,delimiter=","),
+            pd.read_csv(s1_path,index_col=0,delimiter=",")
+        )
+        min_num_frames = np.min([len(df.index) for df in dfs])
 
-    def _check_pause_exists(self):
-        if os.path.isdir(self.save_dir_path) and \
-                os.path.exists(os.path.join(self.save_dir_path,self.h5_filename)):
-            with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'r') as hf:
-                return self.feature_set in hf and \
-                        self.target_participant in hf[self.feature_set] and \
-                        f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
-                            f"_{self.max_future_silence_window_ms}" in \
-                            hf[self.feature_set][self.target_participant]
-        return False
+        # Check that there are no null values in the underlying data.
+        # Trim the dfs to the same length.
+        for df in dfs:
+            assert not df.isnull().values.any()
+            df = df[:min_num_frames]
 
-    def _save(self):
-        group = f"{self.feature_set}/{self.target_participant}/"\
-            f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
-            f"_{self.max_future_silence_window_ms}"
-        # Save the xs and ys
-        with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'a') as hf:
-            if self.force_reprocess:
-                del hf[self.feature_set][self.target_participant]\
-                    [f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
-                    f"_{self.max_future_silence_window_ms}"]
-            hf.create_dataset(f"{group}/xs", data=np.asarray(self.xs))
-            hf.create_dataset(f"{group}/ys", data=np.asarray(self.ys))
+        # Check common frametimes
+        assert dfs[0]['frameTime'].equals(dfs[1]['frameTime'])
 
-    def _load_from_disk(self):
-        with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'r') as hf:
-            group = hf[self.feature_set][self.target_participant]
-            group = group[f"{self.sequence_length_ms}_{self.min_pause_length_ms}"\
-                f"_{self.max_future_silence_window_ms}"]
-            self.xs = group["xs"][:]
-            self.ys = group["ys"][:]
+        # Prepare the pauses df
+        pauses_df = self._extract_pauses(
+            dfs, self.num_pause_frames, self.future_window_frames
+        )
 
-    def _prepare_items(self,s0_feature_df, s1_feature_df, pauses_df):
-        # Collect the data for both models
-        s0_s1_df = pd.concat([s0_feature_df.loc[:,s0_feature_df.columns \
-            != 'frameTime'],s1_feature_df.loc[:,s1_feature_df.columns != 'frameTime']],axis=1)
-        s1_s0_df = pd.concat([s1_feature_df.loc[:,s1_feature_df.columns \
-            != 'frameTime'],s0_feature_df.loc[:,s0_feature_df.columns != 'frameTime']],axis=1)
+        # Prepare xs and ys based on the pauses df
+        s0_s1_df = pd.concat(dfs,axis=1)
+        # Remove frametime
+        s0_s1_df = s0_s1_df.loc[:, s0_s1_df.columns != 'frameTime']
+        assert not s0_s1_df.isnull().values.any()
+
+        xs, ys = list(), list()
         for pause_data in pauses_df.itertuples():
+            # Unpack the pause data
             _,_, previous_speaker, idx_after_silence_frames, _, \
                 hold_shift_label, next_speaker = pause_data
-            idx_after_silence_frames = int(idx_after_silence_frames)
-            # Collect features for each speaker equal to sequence length / num context frames.
+            # Collect features for each speaker equal to sequence length
+            # / num context frames.
             if idx_after_silence_frames- self.num_context_frames >= 0:
-                x_s0 = np.asarray(s0_s1_df.iloc[idx_after_silence_frames-\
-                    self.num_context_frames:idx_after_silence_frames])
-                x_s1 = np.asarray(s1_s0_df.iloc[idx_after_silence_frames-\
-                    self.num_context_frames:idx_after_silence_frames])
+                start_idx = idx_after_silence_frames - self.num_context_frames
+                end_idx = idx_after_silence_frames
+                s = np.asarray(s0_s1_df.iloc[start_idx : end_idx])
             else:
                 num_pad = self.num_context_frames - idx_after_silence_frames -1
-                x_s0 = np.pad(np.asarray(s0_s1_df.iloc[0:idx_after_silence_frames+1])\
-                    ,[(num_pad,0),(0,0)],'constant')
-                x_s1 = np.pad(np.asarray(s1_s0_df.iloc[0:idx_after_silence_frames+1])\
-                    ,[(num_pad,0),(0,0)],'constant')
-            self.xs.append((x_s0,x_s1))
-            self.ys.append((int(previous_speaker), int(hold_shift_label), int(next_speaker)))
+                start_idx = 0
+                end_idx = idx_after_silence_frames+1
+                x = np.pad(
+                    np.asarray(s0_s1_df.iloc[start_idx : end_idx]),
+                    [(num_pad,0),(0,0)],'constant'
+                )
+            y = (int(previous_speaker), int(hold_shift_label), int(next_speaker))
+            xs.append(x)
+            ys.append(y)
 
-    def _prepare_pauses_df(self, s0_feature_df, s1_feature_df):
-        # Obtain frame indices where both speakers are speaking.
-        s0_va_idxs =  np.where(s0_feature_df['voiceActivity'] == 1)[0]
-        s1_va_idxs =  np.where(s1_feature_df['voiceActivity'] == 1)[0]
-        va_idxs = np.union1d(s0_va_idxs,s1_va_idxs)
-        # Obtain index of last speaking frame before silences
-        speak_before_silence_frames_idx = \
-            va_idxs[np.where(np.diff(va_idxs) > self.num_pause_frames)]
-        self.num_silences += len(speak_before_silence_frames_idx)
+        return np.asarray(xs), np.asarray(ys)
+
+    # TODO: Check the output.
+    def _extract_pauses(self,
+            dfs,
+            num_pause_frames : int,
+            future_window_frames : int
+        ):
+        # Initialize a df to store the pause information
+        pauses_df = pd.DataFrame(columns=self.PAUSE_DF_COLUMNS)
+
+        # Obtain frame indices where both speakers are speaking
+        va_idxs = np.union1d([np.where(df["voiceActivity"] == 1) for df in dfs])
+        # Obtain the index of the last speaking frame before silences
+        va_before_silence_idx = va_idxs[np.where(np.diff(va_idxs) > num_pause_frames)]
+        # Assign the number of silences
+        num_silences = len(va_before_silence_idx)
+
         # Remove scenarios where both speakers were speaking last i.e., only
-        # one speaking could have been speaking before te pause
-        speak_before_silence_frames_idx = [idx for idx in speak_before_silence_frames_idx \
-            if not (idx in s0_va_idxs and idx in s1_va_idxs) \
-                and (idx in s0_va_idxs or idx in s1_va_idxs)]
+        # one speaking could have been speaking before the pause
+        va_before_silence_idx = [
+            idx for idx in va_before_silence_idx if \
+                not (idx in va_idxs[0] and idx in va_idxs[1]) and \
+                (idx in va_idxs[0] or idx in va_idxs[1])
+        ]
+
         # Next, we want to find all the instances where one (and only one)
         # speaker continues within the next future_window_ms seconds.
-        pauses_df = pd.DataFrame(columns=['pauseStartFrameTime', 'previousSpeaker',
-            'pauseEndFrameIndex', 'nextSpeechFrameIndex', 'holdShiftLabel', 'nextSpeaker'])
-        for i,idx in enumerate(speak_before_silence_frames_idx):
+        for i, idx in enumerate(va_before_silence_idx):
             # Obtain index of the frame after the specified pause length.
-            idx_after_silence_frames = idx + self.num_pause_frames + 1
-            # Get the voice activity in the specified future window
-            s0_window_va = np.asarray((s0_feature_df['voiceActivity'])[
-                idx_after_silence_frames:idx_after_silence_frames+self.future_window_frames] == 1)
-            s1_window_va = np.asarray((s1_feature_df['voiceActivity'])[
-                idx_after_silence_frames:idx_after_silence_frames+self.future_window_frames] == 1)
-            # Determine the last speaker before silence
-            last_participant = 0 if s0_feature_df['voiceActivity'].iloc[idx] else 1
+            idx_after_silence = idx + num_pause_frames + 1
+            last_idx = idx_after_silence + future_window_frames
+            window_vas = [
+                np.asarray(df['voiceActivity'])[idx_after_silence :last_idx] == 1\
+                    for df in dfs
+            ]
+            # Determine the last speaker before the silence
+            last_speaker = 0 if dfs[0]['voiceActivity'].iloc[idx] else 1
+
             # NOTE: Both speakers might start speaking in the future window but we want
             # to make sure that only one of the speakers starts i.e., no overlap.
             # NOTE: 0 = hold, 1 = shift
-            # Condition 1: Speaker 0 is next.
-            if s0_window_va.any() and not s1_window_va.any():
-                next_va_idx = np.argmax(s0_window_va) + idx_after_silence_frames
-                hold_shift_label = self.HOLD_LABEL if last_participant == 0 \
-                    else self.SHIFT_LABEL
-                pauses_df.loc[i] = (
-                    s0_feature_df.iloc[idx]['frameTime'], last_participant,
-                     idx_after_silence_frames, next_va_idx, hold_shift_label,0)
-            # Condition 2: Speaker 1 is next.
-            elif s1_window_va.any() and not s0_window_va.any():
-                next_va_idx = np.argmax(s1_window_va) + idx_after_silence_frames
-                hold_shift_label = self.HOLD_LABEL if last_participant == 1 \
-                    else self.SHIFT_LABEL
-                pauses_df.loc[i] = (
-                    s1_feature_df.iloc[idx]['frameTime'], last_participant,
-                    idx_after_silence_frames, next_va_idx, hold_shift_label,1)
-        # Update the shift / hold values
-        self.num_holds += (pauses_df['holdShiftLabel'] == self.HOLD_LABEL).sum()
-        self.num_shifts += (pauses_df['holdShiftLabel'] == self.SHIFT_LABEL).sum()
-        self.num_pauses = self.num_holds + self.num_shifts
-        # Save the pauses df if save dir provided
-        # if self.save_dir != None:
-        #     pauses_df.to_csv("{}/{}_pauses_df.csv".format(self.save_dir, dialogue))
-        return pauses_df
+            next_speaker = np.argmax([window.any() for window in window_vas])
+            next_va_idx = np.argmax(window_vas[next_speaker]) + idx_after_silence
+
+            # Determine whether there was a turn hold or shift.
+            hold_shift_label = self.HOLD_LABEL if last_speaker == next_speaker \
+                else self.SHIFT_LABEL
+
+            # Add the information to the pause df
+            pauses_df.iloc[i] = (
+                dfs[last_speaker].iloc[idx]['frameTime'],
+                last_speaker,
+                idx_after_silence,
+                next_va_idx,
+                hold_shift_label,
+                next_speaker
+            )
+
+            # Update the metadata
+            self.num_silences += num_silences
+            self.num_holds += (pauses_df['holdShiftLabel'] == self.HOLD_LABEL).sum()
+            self.num_shifts += (pauses_df['holdShiftLabel'] == self.SHIFT_LABEL).sum()
+            self.num_pauses = self.num_holds + self.num_shifts
+
+            return pauses_df
