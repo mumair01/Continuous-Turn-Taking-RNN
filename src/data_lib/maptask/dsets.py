@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 10:06:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-24 15:37:20
+# @Last Modified time: 2023-01-01 10:55:30
 
 
 import sys
@@ -21,64 +21,64 @@ from .maptask import MapTaskDataReader
 # TODO: Ensure prodody and full datasets have right dims.
 class MapTask(Dataset):
 
+
     def __init__(
         self,
         data_dir : str,
         # TODO: Make this configurable when reader bugs are fixed.
         # frame_step_size_ms : int = 10
+        num_proc : int = 4
     ):
-
         self.base_data_dir = data_dir
-        self.full_feature_dir = os.path.join(data_dir,"full")
-        self.prosody_feature_dir = os.path.join(data_dir,"prosody")
-        self.full_paths = None
-        self.prosody_paths = None
+        self.feature_dirs = {
+            "full" : os.path.join(data_dir,"full"),
+            "prosody" : os.path.join(data_dir,"prosody")
+        }
+        self.paths = {
+            "full" : None,
+            "prosody" : None
+        }
 
         self.frame_step_size_ms = 10
+        self.num_proc = num_proc
 
         self._download_raw()
 
     def _download_raw(self):
 
+        # TODO: Need to figure out how to write a lot of data and read
+        # it at once.
         reader = MapTaskDataReader(
+            num_conversations=None, # TODO: Change this to None eventually.
             frame_step_size_ms=self.frame_step_size_ms,
-            num_conversations=10 # For testing
+            num_proc=self.num_proc
+
         )
-        if not self._check_exists("full"):
-            reader.prepare_data()
-            self.full_paths = reader.setup(
-                variant="full",
-                save_dir=self.base_data_dir
-            )
-        else:
-            self.full_paths = reader.load_from_dir(
-                self.full_feature_dir
-            )
-        if not self._check_exists("prosody"):
-            reader.prepare_data()
-            self.prosody_paths = reader.setup(
-                variant="prosody",
-                save_dir=self.base_data_dir
-            )
-        else:
-            self.prosody_paths = reader.load_from_dir(
-                self.prosody_feature_dir
-            )
+        reader.prepare_data()
+        for variant in ("full", "prosody"):
+            if not self._check_exists(variant):
+                reader.setup(
+                    variant=variant,
+                    save_dir=self.base_data_dir,
+                    reset=False
+                )
+            else:
+                reader.load_from_dir(self.feature_dirs[variant])
+            self.paths[variant] = reader.data_paths
 
     def _check_exists(self, variant):
         # TODO: Add the exact size later.
         if not os.path.isdir(self.base_data_dir):
             return False
-        if variant == "full":
-            return os.path.isdir(self.full_feature_dir) and \
-                len(glob.glob("{}/*.csv".format(self.full_feature_dir))) > 0
-        elif variant == "prosody":
-            return os.path.isdir(self.prosody_feature_dir) and \
-                len(glob.glob("{}/*.csv".format(self.prosody_feature_dir))) > 0
-        return False
+        feature_dir = self.feature_dirs[variant]
+        return os.path.isdir(feature_dir) and \
+            len(glob.glob(f"{feature_dir}/*.csv")) > 0
 
-# TODO: Make the saving and loading mechanism better.
+
 class MapTaskVADDataset(MapTask):
+
+    DATASET_NAME = "va_dataset"
+
     def __init__(
         self,
         data_dir : str,
@@ -90,11 +90,10 @@ class MapTaskVADDataset(MapTask):
         # frame_step_size_ms : int = 10
         force_reprocesses : bool = False
     ):
-        super().__init__(f"{data_dir}/maptask")
+        super().__init__(data_dir)
 
         # Vars.
         frame_step_size_ms = 10 # TODO: Remove hard coded value layer
-
         self.data_dir = data_dir
         self.sequence_length_ms = sequence_length_ms
         self.prediction_length_ms = prediction_length_ms
@@ -102,13 +101,14 @@ class MapTaskVADDataset(MapTask):
         self.frame_step_size_ms = frame_step_size_ms
         self.feature_set = feature_set
         self.force_reprocess = force_reprocesses
-
-        self.save_dir_path = data_dir
-        os.makedirs(self.save_dir_path,exist_ok=True)
-        self.h5_filename = "va_dataset.h5"
         # Calculated
         self.num_context_frames = int(sequence_length_ms / frame_step_size_ms)
         self.num_target_frames = int(prediction_length_ms / frame_step_size_ms)
+
+        # Create output dir
+        self.save_dir_path = data_dir
+        os.makedirs(self.save_dir_path,exist_ok=True)
+        self.dset_save_path = os.path.join(data_dir,f"{self.DATASET_NAME}.h5")
         self._prepare()
 
     def __len__(self):
@@ -121,116 +121,133 @@ class MapTaskVADDataset(MapTask):
         # ys is the previous speaker, hold / shift label, and the next speaker.
         return self.xs[idx], self.ys[idx]
 
+    #####
+    # Methods to load and save the data
+    #####
 
     def _prepare(self):
-        if self._check_va_exists() and not self.force_reprocess:
-            self._load_from_disk()
+        if self._verify_dataset() and not self.force_reprocess:
+            self.xs, self.ys = self._load_from_disk()
         else:
-            paths = self.full_paths if self.feature_set == "full" \
-                else self.prosody_paths
-
+            paths = self.paths[self.feature_set]
             s0_paths = paths[self.target_participant]
             s1_paths = paths["f" if self.target_participant == "g" else "g"]
-            self.xs = []
-            self.ys = []
             for s0_path, s1_path in zip(s0_paths, s1_paths):
                 self._load_apply_transforms(s0_path, s1_path)
+
             # Save the dataset
             self._save()
-
+        # Length of xs and ys must be the same.
         assert len(self.xs) == len(self.ys)
 
-    def _save(self):
-        # Save the xs and ys
-        group = f"{self.feature_set}/{self.target_participant}/"\
-            f"{self.sequence_length_ms}_{self.prediction_length_ms}"
-
-        with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'a') as hf:
+    def _save(self, xs, ys):
+        """
+        Save xs and ys in the relevant group on a conversation level.
+        """
+        with h5py.File(self.dset_save_path,'a') as hf:
+            key = f"{self.sequence_length_ms}_{self.prediction_length_ms}"
             # Delete if exists
-            if self.force_reprocess and self._check_va_exists():
-                del hf[self.feature_set][self.target_participant]\
-                    [f"{self.sequence_length_ms}_{self.prediction_length_ms}"]
+            if self.force_reprocess and self._verify_dataset():
+                del hf[self.feature_set][self.target_participant][key]
 
+            group = f"{self.feature_set}/{self.target_participant}/{key}"
             hf.create_dataset(f"{group}/xs", data=np.asarray(self.xs))
             hf.create_dataset(f"{group}/ys", data=np.asarray(self.ys))
 
     def _load_from_disk(self):
-        with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'r') as hf:
-            group = hf[self.feature_set][self.target_participant]
-            group = group[f"{self.sequence_length_ms}_{self.prediction_length_ms}"]
+        """
+        Load the data from the dset path.
+        """
+        with h5py.File(self.dset_save_path,'r') as hf:
+            key = f"{self.sequence_length_ms}_{self.prediction_length_ms}"
+            group = hf[self.feature_set][self.target_participant][key]
+            return group["xs"][:], group["ys"][:]
 
-            self.xs = group["xs"][:]
-            self.ys = group["ys"][:]
+    def _verify_dataset(self):
+        """
+        Checks the h5 dataset to ensure all of the data exists.
+        """
 
-    def _check_va_exists(self):
-        if os.path.isdir(self.save_dir_path) and \
-                os.path.exists(os.path.join(self.save_dir_path,self.h5_filename)):
-            with h5py.File(f"{self.save_dir_path}/{self.h5_filename}", 'r') as hf:
-                return self.feature_set in hf and \
-                    self.target_participant in hf[self.feature_set] and \
-                    f"{self.sequence_length_ms}_{self.prediction_length_ms}" in \
-                        hf[self.feature_set][self.target_participant]
-        return False
+        if not (os.path.isdir(self.save_dir_path) and \
+                os.path.exists(self.dset_save_path)):
+            return False
 
+        with h5py.File(self.dset_save_path,'r') as hf:
+            key = f"{self.sequence_length_ms}_{self.prediction_length_ms}"
+            return self.feature_set in hf and \
+                self.target_participant in hf[self.feature_set] and \
+                key in hf[self.feature_set][self.target_participant]
+
+    #############
+    # Methods to apply transformations on the underlying dataset.
+    #############
 
     def _load_apply_transforms(self, s0_path, s1_path):
-        # TODO: Add multiprocessing here.
-        s0_feature_df = pd.read_csv(s0_path, index_col=0,delimiter=",")
-        s1_feature_df = pd.read_csv(s1_path,index_col=0,delimiter=",")
-        self._load_data(s0_feature_df, s1_feature_df)
+        """
+        For the given s0 and s1 paths, returns the xs and the ys.
+        """
+        # Load the dataframes
+        dfs = (
+            pd.read_csv(s0_path, index_col=0,delimiter=","),
+            pd.read_csv(s1_path,index_col=0,delimiter=",")
+        )
+        min_num_frames = np.min([len(df.index) for df in dfs])
 
-    def _load_data(self, s0_feature_df, s1_feature_df):
-        # Extract the voice activity labels for s0 as the target labels
-        s0_target_labels_df = self._extract_voice_activity_labels(
-            s0_feature_df,self.num_target_frames)
-        # Make sure none of the dfs have any nan values
-        assert not s0_feature_df.isnull().values.any() and \
-            not s1_feature_df.isnull().values.any() and \
-            not s0_target_labels_df.isnull().values.any()
-        # Trim the dataframes to the same length
-        min_num_frames = np.min([len(s0_feature_df.index),len(s1_feature_df.index)])
-        s0_feature_df = s0_feature_df[:min_num_frames]
-        s1_feature_df = s1_feature_df[:min_num_frames]
-        s0_target_labels_df = s0_target_labels_df[:min_num_frames]
-        # Make sure they all have common frametimes
-        assert s0_feature_df['frameTime'].equals(s1_feature_df['frameTime'])
-        assert s0_feature_df['frameTime'].equals(s0_target_labels_df['frameTime'])
-        s0_s1_df = pd.concat([s0_feature_df,s1_feature_df],axis=1)
+        # Check that there are no null values in the underlying data.
+        # Trim the dfs to the same length.
+        for df in dfs:
+            assert not df.isnull().values.any()
+            df = df[:min_num_frames]
+
+        # Check common frametimes
+        assert dfs[0]['frameTime'].equals(dfs[1]['frameTime'])
+
+        # Concat to a larget vector
+        # TODO: This should be 130 for the full dataset but is currently more.
+        s0_s1_df = pd.concat(dfs,axis=1)
         assert not s0_s1_df.isnull().values.any()
-        # Determine the number of sequences for this dialogue
-        num_sequences = int(np.floor(len(s0_feature_df.index))/self.num_context_frames)
+
+        # Generate target VA labels for the target speaker
+        va_labels = self._extract_va_target_labels(dfs[0],self.num_target_frames)
+
+        # Prepare sequences for this dialogue.
+        num_sequences = int(np.floor(len(dfs[0].index))/self.num_context_frames)
+        xs, ys = list(), list()
         for i in range(num_sequences):
-            x = np.asarray(s0_s1_df.loc[:,s0_s1_df.columns != 'frameTime'][i * \
-                self.num_context_frames : (i * self.num_context_frames) \
-                    + self.num_context_frames])
-            y = np.asarray(s0_target_labels_df.loc[:,s0_target_labels_df.columns\
-                    != 'frameTime'][i * self.num_context_frames : \
-                        (i * self.num_context_frames) + self.num_context_frames])[-1,:]
-            self.xs.append(x)
-            self.ys.append(y)
+            columns = s0_s1_df.columns != 'frameTime'
+            start_idx = i * self.num_context_frames
+            end_idx = start_idx + self.num_context_frames
+            x = np.asarray(
+                s0_s1_df.loc[:, columns][ start_idx: end_idx]
+            )
+            # TODO: Check the y values here.
+            # We want the target output to be the last target labels in the
+            # sequence.
+            y = va_labels[start_idx:end_idx][-1,:]
+        return xs, ys
 
-    def _extract_voice_activity_labels(self, feature_df, N):
-        # TODO: FIx the delimiter
-        feature_df = feature_df[["frameTime","voiceActivity"]]
-        assert not feature_df.isnull().values.any()
-        frame_times_ms = np.asarray(feature_df["frameTime"])
-        voice_activity_annotations = np.asarray(feature_df["voiceActivity"])
-        assert frame_times_ms.shape[0] == voice_activity_annotations.shape[0]
-        labels = np.zeros((frame_times_ms.shape[0],N)) # target label shape: Num Frames x N
-        for i in range(len(frame_times_ms)):
+    def _extract_va_target_labels(self, df : pd.DataFrame, N : int) \
+            -> np.ndarray:
+        """
+        Given a feature df, extract the next N voice activity labels per timestep.
+        """
+        frame_times = np.asarray(df[["frameTime"]])
+        va = np.asarray(df[["voiceActivity"]]).squeeze()
+        num_frames = frame_times.shape[0]
+        # Check the underlying data
+        assert not np.isnan(frame_times).any() and not np.isnan(va).any() and \
+            va.shape[0] == num_frames
+
+        # target label shape: Num Frames x N
+        labels = np.zeros((num_frames, N))
+        for i in range(num_frames):
             # Pad the last labels with 0 if the conversation has ended
-            if i + N > len(frame_times_ms):
-                concat = np.concatenate(
-                    [voice_activity_annotations[i:],
-                    np.zeros(N - (len(frame_times_ms)-i))])
-                labels[i] = concat
+            if i + N > num_frames:
+                labels[i] = np.concatenate([va[i:], np.zeros(N-(num_frames-i))])
             else:
-                labels[i] = voice_activity_annotations[i:i+N]
-        labels_df = pd.DataFrame(labels)
-        labels_df.insert(0,"frameTime",frame_times_ms)
-        assert not labels_df.isnull().values.any()
-        return labels_df
-
+                labels[i] = va[i:i+N]
+        assert not np.isnan(labels).any()
+        return labels
 
 
 class MapTaskPauseDataset(MapTask):

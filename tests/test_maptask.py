@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 13:17:53
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-31 17:03:19
+# @Last Modified time: 2023-01-01 10:36:29
 
 import sys
 import os
@@ -42,23 +42,32 @@ def test_maptask_data_reader():
         )
         print(maptask.data_paths)
 
-# def test_maptask_va_dataset():
-#     dset = MapTaskVADDataset(
-#         data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
-#         sequence_length_ms=10_000,
-#         prediction_length_ms=1000,
-#         target_participant="f",
-#         feature_set="full",
-#         force_reprocesses=False
-#     )
-#     dset = MapTaskVADDataset(
-#         data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
-#         sequence_length_ms=10_000,
-#         prediction_length_ms=1000,
-#         target_participant="f",
-#         feature_set="prosody",
-#         force_reprocesses=False
-#     )
+def test_maptask_dataset():
+    dset = MapTask(
+        data_dir=MAPTASK_TEMP_SAVE_DIR,
+        num_proc=4
+    )
+
+def test_maptask_va_dataset():
+
+    dset = MapTaskVADDataset(
+        data_dir=MAPTASK_TEMP_SAVE_DIR,
+        sequence_length_ms=10_000,
+        prediction_length_ms=1000,
+        target_participant="f",
+        feature_set="full",
+        force_reprocesses=True
+    )
+    x, y = dset[0]
+    print(x.shape, y.shape)
+    # dset = MapTaskVADDataset(
+    #     data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
+    #     sequence_length_ms=10_000,
+    #     prediction_length_ms=1000,
+    #     target_participant="f",
+    #     feature_set="prosody",
+    #     force_reprocesses=False
+    # )
 
 # def test_maptask_pause_dataset():
 #     MapTaskPauseDataset(

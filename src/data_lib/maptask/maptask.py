@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-31 16:43:37
+# @Last Modified time: 2023-01-01 08:57:32
 
 import sys
 import os
@@ -401,18 +401,3 @@ class MapTaskDataReader:
             logger.debug(msg)
             raise Exception(msg)
 
-
-
-
-
-if __name__ == "__main__":
-
-    reader = MapTaskDataReader(
-        frame_step_size_ms=10,
-        num_conversations=50
-    )
-    reader.prepare_data()
-    reader.setup(
-        variant="full",
-        save_dir="./output"
-    )
