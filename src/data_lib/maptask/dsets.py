@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 10:06:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-01 10:55:30
+# @Last Modified time: 2023-01-01 13:16:11
 
 
 import sys
@@ -15,6 +15,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import h5py
+
+
 
 from .maptask import MapTaskDataReader
 
@@ -49,7 +51,7 @@ class MapTask(Dataset):
         # TODO: Need to figure out how to write a lot of data and read
         # it at once.
         reader = MapTaskDataReader(
-            num_conversations=None, # TODO: Change this to None eventually.
+            num_conversations=10, # TODO: Change this to None eventually.
             frame_step_size_ms=self.frame_step_size_ms,
             num_proc=self.num_proc
 
@@ -88,7 +90,7 @@ class MapTaskVADDataset(MapTask):
         feature_set : str,
         # TODO: Make this configurable when reader bugs are fixed.
         # frame_step_size_ms : int = 10
-        force_reprocesses : bool = False
+        force_reprocess : bool = False
     ):
         super().__init__(data_dir)
 
@@ -100,83 +102,84 @@ class MapTaskVADDataset(MapTask):
         self.target_participant = target_participant
         self.frame_step_size_ms = frame_step_size_ms
         self.feature_set = feature_set
-        self.force_reprocess = force_reprocesses
+        self.force_reprocess = force_reprocess
         # Calculated
         self.num_context_frames = int(sequence_length_ms / frame_step_size_ms)
         self.num_target_frames = int(prediction_length_ms / frame_step_size_ms)
 
+        self.length = 0
         # Create output dir
         self.save_dir_path = data_dir
         os.makedirs(self.save_dir_path,exist_ok=True)
+        # H5py management
         self.dset_save_path = os.path.join(data_dir,f"{self.DATASET_NAME}.h5")
+        self.group_name = f"{self.feature_set}/{self.target_participant}/:"\
+            f"{self.sequence_length_ms}_{self.prediction_length_ms}"
+
         self._prepare()
 
     def __len__(self):
-        return len(self.xs)
+        """Obtain the length of the total dataset"""
+        return self.length
 
     def __getitem__(self, idx):
+        """
+        Get the item in the specified index.
+        Since this dataset is storing a lot of data, it is actually reading
+        each index from an underlying h5 file.
+        """
         if idx > self.__len__():
             raise Exception
         # NOTE: xs has target speaker features concatenated with non-target speaker features.
         # ys is the previous speaker, hold / shift label, and the next speaker.
-        return self.xs[idx], self.ys[idx]
+        with  h5py.File(self.dset_save_path,'r') as f:
+            xs_group = f.require_group(f"{self.group_name}/xs")
+            ys_group = f.require_group(f"{self.group_name}/ys")
+            return np.asarray(xs_group[f"{idx}"]), np.asarray(ys_group[f"{idx}"])
 
-    #####
+    ##########
     # Methods to load and save the data
-    #####
+    ##########
 
     def _prepare(self):
-        if self._verify_dataset() and not self.force_reprocess:
-            self.xs, self.ys = self._load_from_disk()
+        # If the h5 file already exists, simply load from the file.
+
+        if not self.force_reprocess and os.path.isfile(self.dset_save_path) and \
+            self.group_name in h5py.File(self.dset_save_path,'r'):
+
+            f = h5py.File(self.dset_save_path,'r')
+            xs_group = f.require_group(f"{self.group_name}/xs")
+            ys_group = f.require_group(f"{self.group_name}/ys")
+            assert len(xs_group.keys()) == len(ys_group.keys())
+            self.length = len(xs_group.keys())
         else:
-            paths = self.paths[self.feature_set]
-            s0_paths = paths[self.target_participant]
-            s1_paths = paths["f" if self.target_participant == "g" else "g"]
-            for s0_path, s1_path in zip(s0_paths, s1_paths):
-                self._load_apply_transforms(s0_path, s1_path)
+            # Otherwise, generate all the data and save it in the underlying
+            # file at the appropriate group.
+            s0_paths = self.paths[self.feature_set][self.target_participant]
+            s1_paths = self.paths[self.feature_set]\
+                ["f" if self.target_participant == "g" else "g"]
 
-            # Save the dataset
-            self._save()
-        # Length of xs and ys must be the same.
-        assert len(self.xs) == len(self.ys)
+            # Open the file to append.
+            f = h5py.File(self.dset_save_path,'a')
+            # If the groups already exists, delete it.
+            if self.group_name in f:
+                del f[self.group_name]
 
-    def _save(self, xs, ys):
-        """
-        Save xs and ys in the relevant group on a conversation level.
-        """
-        with h5py.File(self.dset_save_path,'a') as hf:
-            key = f"{self.sequence_length_ms}_{self.prediction_length_ms}"
-            # Delete if exists
-            if self.force_reprocess and self._verify_dataset():
-                del hf[self.feature_set][self.target_participant][key]
+            # Create the groups
+            xs_group = f.require_group(f"{self.group_name}/xs")
+            ys_group = f.require_group(f"{self.group_name}/ys")
 
-            group = f"{self.feature_set}/{self.target_participant}/{key}"
-            hf.create_dataset(f"{group}/xs", data=np.asarray(self.xs))
-            hf.create_dataset(f"{group}/ys", data=np.asarray(self.ys))
+            for (s0_path, s1_path) in zip(s0_paths, s1_paths):
+                # Get the xs and ys for these convs.
+                xs, ys = self._load_apply_transforms(s0_path, s1_path)
+                for i in range(xs.shape[0]):
 
-    def _load_from_disk(self):
-        """
-        Load the data from the dset path.
-        """
-        with h5py.File(self.dset_save_path,'r') as hf:
-            key = f"{self.sequence_length_ms}_{self.prediction_length_ms}"
-            group = hf[self.feature_set][self.target_participant][key]
-            return group["xs"][:], group["ys"][:]
+                    # Add this to the appropriate index
+                    xs_group.create_dataset(f"{self.length + i}",data=xs[i])
+                    ys_group.create_dataset(f"{self.length + i}",data=ys[i])
+                self.length += xs.shape[0]
+        f.close()
 
-    def _verify_dataset(self):
-        """
-        Checks the h5 dataset to ensure all of the data exists.
-        """
-
-        if not (os.path.isdir(self.save_dir_path) and \
-                os.path.exists(self.dset_save_path)):
-            return False
-
-        with h5py.File(self.dset_save_path,'r') as hf:
-            key = f"{self.sequence_length_ms}_{self.prediction_length_ms}"
-            return self.feature_set in hf and \
-                self.target_participant in hf[self.feature_set] and \
-                key in hf[self.feature_set][self.target_participant]
 
     #############
     # Methods to apply transformations on the underlying dataset.
@@ -224,7 +227,10 @@ class MapTaskVADDataset(MapTask):
             # We want the target output to be the last target labels in the
             # sequence.
             y = va_labels[start_idx:end_idx][-1,:]
-        return xs, ys
+            xs.append(x)
+            ys.append(y)
+
+        return np.asarray(xs), np.asarray(ys)
 
     def _extract_va_target_labels(self, df : pd.DataFrame, N : int) \
             -> np.ndarray:

@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 13:17:53
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-01 10:36:29
+# @Last Modified time: 2023-01-01 13:16:20
 
 import sys
 import os
@@ -56,10 +56,12 @@ def test_maptask_va_dataset():
         prediction_length_ms=1000,
         target_participant="f",
         feature_set="full",
-        force_reprocesses=True
+        force_reprocess=False
     )
-    x, y = dset[0]
-    print(x.shape, y.shape)
+    print(len(dset))
+    for i in range(len(dset)):
+        x, y = dset[i]
+        print(x.shape, y.shape)
     # dset = MapTaskVADDataset(
     #     data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
     #     sequence_length_ms=10_000,
