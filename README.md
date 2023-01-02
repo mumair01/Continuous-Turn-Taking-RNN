@@ -103,4 +103,4 @@ In Experiment 4.2, we use the the trained models from the perspective of both sp
 
 ## Acknowledgements
 
-This project is a reimplementation of the paper [Towards a General, Continuous Model of Turn-taking in Spoken DialogueusingLSTM Recurrent Neural Networks](https://aclanthology.org/W17-5527.pdf).
+This project is a reimplementation of the paper [Towards a General, Continuous Model of Turn-taking in Spoken Dialogue using LSTM Recurrent Neural Networks](https://aclanthology.org/W17-5527.pdf).
