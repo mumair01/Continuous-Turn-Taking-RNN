@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 10:06:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-02 12:31:37
+# @Last Modified time: 2023-01-02 12:35:42
 
 
 import sys
@@ -335,7 +335,7 @@ class MapTaskPauseDataset(MapTask):
             f"{self.sequence_length_ms}/{self.min_pause_length_ms}/{self.max_future_silence_window_ms}"
 
         if self.save_as_csv:
-            self.csv_dir_path =  f"{self.data_dir}/{self.DATASET_NAME}/csvs"
+            self.csv_dir_path =  f"{self.data_dir}/{self.DATASET_NAME}/{feature_set}/csvs"
             reset_dir(self.csv_dir_path)
 
         self._prepare()

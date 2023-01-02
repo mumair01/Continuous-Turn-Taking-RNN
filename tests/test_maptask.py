@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 13:17:53
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-02 12:31:49
+# @Last Modified time: 2023-01-02 14:40:38
 
 import sys
 import os
@@ -31,11 +31,11 @@ FORCE_REPROCESS = True
 
 
 @pytest.mark.parametrize(
-    "variant", ["prosody", "full"]
+    "variant", ["prosody"]
 )
 def test_maptask_data_reader(variant):
     maptask = MapTaskDataReader(
-        num_conversations=2
+        num_conversations=None
     )
     maptask.prepare_data()
     maptask.setup(
@@ -104,34 +104,34 @@ def test_maptask_pause_dataset(
     )
 
 
-# def test_maptask_va_dm():
-#     dm = MapTaskVADataModule(
-#         data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
-#         sequence_length_ms=60_000,
-#         prediction_length_ms=3000,
-#         feature_set="full",
-#         target_participant="f",
-#         frame_step_size_ms=10,
-#         batch_size=1
-#     )
-#     dm.prepare_data()
-#     dm.setup()
-#     loader = dm.train_dataloader()
-#     x, y = next(iter(loader))
-#     print(x.shape, y.shape)
+def test_maptask_va_dm():
+    dm = MapTaskVADataModule(
+        data_dir=MAPTASK_TEMP_SAVE_DIR,
+        sequence_length_ms=60_000,
+        prediction_length_ms=3000,
+        feature_set="full",
+        target_participant="f",
+        batch_size=32,
+        force_reprocess=False
+    )
+    dm.prepare_data()
+    dm.setup()
+    loader = dm.train_dataloader()
+    x, y = next(iter(loader))
+    print(x.shape, y.shape)
 
-# def test_maptask_pause_dm():
-#     dm = MapTaskPauseDataModule(
-#         data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
-#         sequence_length_ms=60_000,
-#         min_pause_length_ms=500,
-#         max_future_silence_window_ms=1000,
-#         target_participant="f",
-#         feature_set="full",
-#         batch_size=1
-#     )
-#     dm.prepare_data()
-#     dm.setup()
-#     loader = dm.train_dataloader()
-#     x, y = next(iter(loader))
-#     print(x.shape, y.shape)
+def test_maptask_pause_dm():
+    dm = MapTaskPauseDataModule(
+        data_dir=MAPTASK_TEMP_SAVE_DIR,
+        sequence_length_ms=60_000,
+        min_pause_length_ms=500,
+        max_future_silence_window_ms=1000,
+        target_participant="f",
+        feature_set="full",
+        batch_size=1
+    )
+    dm.prepare_data()
+    dm.setup()
+    loader = dm.train_dataloader()
+    x, y = next(iter(loader))
+    print(x.shape, y.shape)
