@@ -2,46 +2,55 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 13:34:59
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-25 15:56:18
+# @Last Modified time: 2023-01-02 16:49:54
 
 import sys
 import os
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
-import logging
-logger = logging.getLogger(__name__)
-
-from datetime import datetime
-now = datetime.now()
-import hydra
-from hydra.utils import get_original_cwd, to_absolute_path
+# Hydra imports
 from hydra.core.config_store import ConfigStore
 from hydra_zen import (
-    builds, make_config, make_custom_builds_fn, instantiate, MISSING, launch,
-    to_yaml
+    make_config, instantiate, MISSING, launch,
 )
-from omegaconf import DictConfig
 
+# Pytorch imports
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger, MLFlowLogger
 
-from data_lib.maptask import MapTaskPauseDataModule, MapTaskVADataModule
-from models.va_predictor import VoiceActivityPredictor
+# Local imports
+from data_lib.maptask import  MapTaskVADataModule
+from experiments.config import MaptaskVADMConf, TrainerConf
+from utils import  get_output_dir
+
+# Logger
+import logging
+logger = logging.getLogger(__name__)
 
 
-from utils import (
-    get_cache_data_dir, get_output_dir, get_root_path
-)
+############
+# GLOBALS
+############
 
-from experiments.config import(
-    MaptaskVADMConf, TrainerConf
-)
+EXPERIMENT_NAME = "experiment_4_1"
 
+SEQUENCE_LENGTHS_MS = [60_000]
+PREDICTION_LENGTHS_MS = [250, 500, 1000, 2000, 3000]
+TARGET_PARTICIPANTS = ["f", "g"]
 
-# This is replacing config.yaml from regular hydra.
+# SEQUENCE_LENGTHS_MS = [60_000]
+# PREDICTION_LENGTHS_MS = [250]
+# TARGET_PARTICIPANTS = ["f"]
+
+############
+# Experiment Configurations
+############
+
+# NOTE This is replacing config.yaml from regular hydra.
 ExperimentConfig = make_config(
     defaults=[
         "_self_",
@@ -51,33 +60,45 @@ ExperimentConfig = make_config(
     model=MISSING,
     trainer=TrainerConf,
     seed=1,
-    # TODO: Add more experiment constants here!
+    # TODO: Add more experiment constants here if needed.
 )
 # Store here so that values can be changed from the command line.
 cs = ConfigStore.instance()
 cs.store(name="config", node=ExperimentConfig)
 
 
-def experiment_4_1(cfg : ExperimentConfig):
+
+############
+# Experiment Task Function Definition
+############
+
+def task(cfg : ExperimentConfig):
     """
     In this experiment, we want to generate the prediction performance
     for the VAPredictor using the VADataModule for various sequence lengths,
     prediction lengths, and feature sets.
     """
-    # Instantiate and prepare the data module
-    logger.info("Starting experiment 4.1")
-    logger.info("Loading data module...")
-    dm = instantiate(cfg.dm)
+    logger.info(f"Starting experiment 4.1 with configurations:\n{cfg}")
+
+    # Initialize the data module - which are all builds that assume that
+    # all MISSING fields have been passed to cfg.
+    logger.info("Preparing data module")
+    dm : MapTaskVADataModule = instantiate(cfg.dm)
     dm.prepare_data()
     dm.setup(stage="fit")
 
-    # Instantiate model
-    logger.info("Initializing model...")
+    # Instantiate the model itself - which are pbuilds since the input dims
+    # have to be inferred from the dm.
+    logger.info("Preparing model")
     model = instantiate(cfg.model)(
-        out_features= int(cfg.dm.prediction_length_ms/10) # NOTE: 10 is hard coded for now.
+        input_dim=next(iter(dm.train_dataloader()))[0].shape[-1],
+        #  NOTE: 10 is hard coded for now as the frame step size
+        out_features=int(cfg.dm.prediction_length_ms/10)
     )
 
-    # Define checkpoints
+    ##### Instantiate the trainer components
+
+    # Callbacks
     checkpoint_callback = ModelCheckpoint(
         dirpath=os.path.join(os.getcwd(),"checkpoints"),
         save_top_k=1,
@@ -87,21 +108,22 @@ def experiment_4_1(cfg : ExperimentConfig):
         monitor="val_loss", mode="min"
     )
 
-    # Define loggers
+    # Logger
     # NOTE: Since mlflow and hydra multi-run do not interact well,
     # need to configure this per experiment.
     mlf_logger = MLFlowLogger(
-        experiment_name="experiment_4_1",
+        experiment_name=EXPERIMENT_NAME,
         run_name=(
             f"seq_length_ms={cfg.dm.sequence_length_ms}."
             f"prediction_length_ms={cfg.dm.prediction_length_ms}."
             f"s0={cfg.dm.target_participant}."
             f"feature_set={dm.feature_set}"
         ),
-        tracking_uri=f"file:{get_output_dir()}/experiment_4.1/ml-runs"
+        tracking_uri=f"file:{get_output_dir()}/{EXPERIMENT_NAME}/ml-runs"
     )
-    logger.info("Instantiating trainer...")
-    # Define Trainers
+
+    # Trainer
+    logger.info("Preparing trainer")
     trainer = instantiate(cfg.trainer)(
         callbacks=[
             checkpoint_callback, early_stopping_callback
@@ -109,58 +131,40 @@ def experiment_4_1(cfg : ExperimentConfig):
         logger=mlf_logger
     )
 
-    # Run training
-    logger.info("Fitting model...")
+    #### Training
+    # Fit and evaluate best model.
+    logger.info("Starting training...")
     trainer.fit(model, datamodule=dm)
-
-    # Evaluate the best model.
-    res = trainer.test(ckpt_path=checkpoint_callback.best_model_path,datamodule=dm)
-    return res
+    trainer.test(ckpt_path=checkpoint_callback.best_model_path,datamodule=dm)
+    logger.info("Completed experiment")
 
 def main():
+
+    # Create the sweep directory path
+    now = datetime.now()
     date = now.strftime("%Y-%m-%d")
     time = now.strftime("%H-%M-%S")
-    # TODO: Remove the first job after testing.
-    (jobs,) = launch(  # type: ignore
-        ExperimentConfig,
-        experiment_4_1,
-        overrides=[
-            "dm.sequence_length_ms=60_000",
-            "dm.prediction_length_ms=250",
-            "dm.target_participant=f",
-            "dm.feature_set=full",
-            "model=FullModel",
-            f"hydra.sweep.dir={get_output_dir()}/experiment_4.1/{date}/{time}"
-        ],
-        multirun=True,
-    )
-    # # Full feature set experiment.
-    # (jobs,) = launch(  # type: ignore
-    #     ExperimentConfig,
-    #     experiment_4_1,
-    #     overrides=[
-    #         "dm.sequence_length_ms=60_000",
-    #         "dm.prediction_length_ms=250,500,1000,2000",
-    #         "dm.target_participant=f,g",
-    #         "dm.feature_set=full",
-    #         "model=FullModel"
-    #     ],
-    #     multirun=True,
-    # )
-    # # Prosody feature set experiment.
-    # (jobs,) = launch(  # type: ignore
-    #     ExperimentConfig,
-    #     experiment_4_1,
-    #     overrides=[
-    #         "dm.sequence_length_ms=60_000",
-    #         "dm.prediction_length_ms=250,500,1000,2000",
-    #         "dm.target_participant=f,g",
-    #         "dm.feature_set=prosody",
-    #         "model=ProsodyModel"
-    #     ],
-    #     multirun=True,
-    # )
 
+    # Try all combinations on the variants individually
+    for feature_set in ("full", "prosody"):
+        sweep_path = f"{get_output_dir()}/{EXPERIMENT_NAME}/{feature_set}/{date}/{time}"
+        # Define feature set specific params.
+        model = "FullModel" if feature_set == "full" else "ProsodyModel"
+
+        # TODO: Remove the first job after testing.
+        (jobs,) = launch(  # type: ignore
+            ExperimentConfig,
+            task,
+            overrides=[
+                f"dm.sequence_length_ms={','.join([str(x) for x in SEQUENCE_LENGTHS_MS])}",
+                f"dm.prediction_length_ms={','.join([str(x) for x in PREDICTION_LENGTHS_MS])}",
+                f"dm.target_participant={','.join(TARGET_PARTICIPANTS)}",
+                f"dm.feature_set={feature_set}",
+                f"model={model}",
+                f"hydra.sweep.dir={sweep_path}"
+            ],
+            multirun=True,
+        )
 
 if __name__ == "__main__":
     main()

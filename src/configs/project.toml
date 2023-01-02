@@ -1,5 +1,5 @@
 [paths]
-outputDir = "output"
+outputDir = "data/output"
 
 [paths.datasets]
 cacheDir = "data/cache"
