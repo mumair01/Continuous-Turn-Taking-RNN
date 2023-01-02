@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 13:17:53
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-01 13:16:20
+# @Last Modified time: 2023-01-02 12:31:49
 
 import sys
 import os
@@ -22,25 +22,29 @@ from utils import (
 MAPTASK_CACHE_DIR = os.path.join(get_cache_data_dir(), "maptask")
 MAPTASK_RAW_DIR = os.path.join(get_raw_data_dir(), "maptask")
 MAPTASK_TEMP_SAVE_DIR = os.path.join("tests","output","maptask")
+FORCE_REPROCESS = True
+
 
 ########
 # Testing the MapTaskReader Class
 ########
 
 
-
-def test_maptask_data_reader():
+@pytest.mark.parametrize(
+    "variant", ["prosody", "full"]
+)
+def test_maptask_data_reader(variant):
     maptask = MapTaskDataReader(
         num_conversations=2
     )
     maptask.prepare_data()
-    for variant in ("prosody","full"):
-        maptask.setup(
-            variant=variant,
-            save_dir=MAPTASK_TEMP_SAVE_DIR,
-            reset=False
-        )
-        print(maptask.data_paths)
+    maptask.setup(
+        variant=variant,
+        save_dir=MAPTASK_TEMP_SAVE_DIR,
+        reset=FORCE_REPROCESS
+    )
+    print(maptask.data_paths)
+
 
 def test_maptask_dataset():
     dset = MapTask(
@@ -48,62 +52,57 @@ def test_maptask_dataset():
         num_proc=4
     )
 
-def test_maptask_va_dataset():
+# @pytest.mark.parametrize("sequence_length_ms", [10_000])
+# @pytest.mark.parametrize("prediction_length_ms", [500])
+# @pytest.mark.parametrize("target_participant", ["f"])
+# @pytest.mark.parametrize("feature_set", ["prosody"])
+
+
+@pytest.mark.parametrize("sequence_length_ms", [10_000, 5000])
+@pytest.mark.parametrize("prediction_length_ms", [500, 1000])
+@pytest.mark.parametrize("target_participant", ["f", "g"])
+@pytest.mark.parametrize("feature_set", ["full", "prosody"])
+def test_maptask_va_dataset(
+    sequence_length_ms,
+    prediction_length_ms,
+    target_participant,
+    feature_set
+):
 
     dset = MapTaskVADDataset(
         data_dir=MAPTASK_TEMP_SAVE_DIR,
-        sequence_length_ms=10_000,
-        prediction_length_ms=1000,
-        target_participant="f",
-        feature_set="full",
-        force_reprocess=False
+        sequence_length_ms=sequence_length_ms,
+        prediction_length_ms=prediction_length_ms,
+        target_participant=target_participant,
+        feature_set=feature_set,
+        force_reprocess=FORCE_REPROCESS,
     )
     print(len(dset))
-    for i in range(len(dset)):
-        x, y = dset[i]
-        print(x.shape, y.shape)
-    # dset = MapTaskVADDataset(
-    #     data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
-    #     sequence_length_ms=10_000,
-    #     prediction_length_ms=1000,
-    #     target_participant="f",
-    #     feature_set="prosody",
-    #     force_reprocesses=False
-    # )
 
-# def test_maptask_pause_dataset():
-#     MapTaskPauseDataset(
-#         data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
-#         sequence_length_ms=60_000,
-#         min_pause_length_ms=500,
-#         max_future_silence_window_ms=1000,
-#         s0_participant="f",
-#         feature_set="full",
-#         force_reprocess=False
-#     )
-#     MapTaskPauseDataset(
-#         data_dir="/Users/muhammadumair/Documents/Repositories/mumair01-repos/TRP-Detection/data/cache/maptask",
-#         sequence_length_ms=60_000,
-#         min_pause_length_ms=500,
-#         max_future_silence_window_ms=1000,
-#         s0_participant="f",
-#         feature_set="prosody",
-#         force_reprocess=False
-#     )
 
-# def test_maptask_reader():
-#     reader = MapTaskDataReader(
-#         num_conversations=3
-#     )
-#     reader.prepare_data()
-#     reader.setup(
-#         variant="full",
-#         save_dir="./output"
-#     )
-#     reader.setup(
-#         variant="prosody",
-#         save_dir="./output"
-#     )
+@pytest.mark.parametrize("sequence_length_ms", [10_000, 5000])
+@pytest.mark.parametrize("min_pause_length_ms", [250, 500])
+@pytest.mark.parametrize("max_future_silence_window_ms", [500, 1000])
+@pytest.mark.parametrize("s0_participant", ["f", "g"])
+@pytest.mark.parametrize("feature_set", ["full", "prosody"])
+def test_maptask_pause_dataset(
+    sequence_length_ms,
+    min_pause_length_ms,
+    max_future_silence_window_ms,
+    s0_participant,
+    feature_set
+):
+    MapTaskPauseDataset(
+        data_dir=MAPTASK_TEMP_SAVE_DIR,
+        sequence_length_ms=sequence_length_ms,
+        min_pause_length_ms=min_pause_length_ms,
+        max_future_silence_window_ms=max_future_silence_window_ms,
+        s0_participant=s0_participant,
+        feature_set=feature_set,
+        force_reprocess=FORCE_REPROCESS,
+        save_as_csv=True
+    )
+
 
 # def test_maptask_va_dm():
 #     dm = MapTaskVADataModule(

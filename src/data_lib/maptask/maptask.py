@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-01 08:57:32
+# @Last Modified time: 2023-01-02 12:25:48
 
 import sys
 import os
@@ -99,13 +99,46 @@ POS_TAGS = [
 ]
 
 
+GEMAPS_FREQUENCY_FEATURES = [
+    'F0semitoneFrom27.5Hz_sma3nz', # Pitch: logarithmic F0 on a semitone frequency scale, starting at 27.5 Hz (semitone 0)
+    # "jitterLocal_sma3nz", # Jitter, deviations in individual consecutive F0 period lengths.
+    #  # Formant 1, 2, and 3 frequency, centre frequency of first, second, and third formant
+    # "F1frequency_sma3nz",
+    # "F2frequency_sma3nz",
+    # "F3frequency_sma3nz",
+    # "F1bandwidth_sma3nz"
+]
+
+GEMAPS_ENERGY_FEATURES = [
+    # "shimmerLocaldB_sma3nz", # Shimmer, difference of the peak amplitudes of consecutive F0 periods.
+    "Loudness_sma3", # Loudness, estimate of perceived signal intensity from an auditory spectrum.
+    # "HNRdBACF_sma3nz" # Harmonics-to-Noise Ratio (HNR), relation of energy in harmonic components to energy in noiselike components.
+]
+
+GEMAPS_SPECTRAL_FEATURES = [
+    'spectralFlux_sma3',
+    # "alphaRatio_sma3", #  Alpha Ratio, ratio of the summed energy from 50–1000 Hz and 1–5 kHz
+    # "hammarbergIndex_sma3",  # Hammarberg Index, ratio of the strongest energy peak in the 0–2 kHz region to the strongest peak in the 2–5 kHz region
+    # # Spectral Slope 0–500 Hz and 500–1500 Hz, linear regression slope of the logarithmic power spectrum within the two given bands
+    # "slope0-500_sma3",
+    # "slope500-1500_sma3",
+    # # Formant 1, 2, and 3 relative energy, as well as the ratio of the energy of the spectral harmonic
+    # # peak at the first, second, third formant’s centre frequency to the energy of the spectral peak at F0.
+    # "F1amplitudeLogRelF0_sma3nz",
+    # "F2amplitudeLogRelF0_sma3nz",
+    # "F3amplitudeLogRelF0_sma3nz",
+    # "logRelF0-H1-H2_sma3nz", # Harmonic difference H1–H2, ratio of energy of the first F0 harmonic (H1) to the energy of the second F0 harmonic (H2)
+    # "logRelF0-H1-A3_sma3nz" # Harmonic difference H1–A3, ratio of energy of the first F0 harmonic (H1) to the energy of the highest harmonic in the third formant range (A3).
+]
+
+
+RELEVANT_GEMAP_FEATURES = GEMAPS_FREQUENCY_FEATURES + GEMAPS_ENERGY_FEATURES + \
+    GEMAPS_SPECTRAL_FEATURES
+
+
 # Features for both the prosody model.
 # TODO: Check whether frameTime is a feature used in the paper.
-PROSODY_FEATURES = [
-    "frameTime", "voiceActivity", "Loudness_sma3",
-    "F0semitoneFrom27.5Hz_sma3nz", "F0semitoneFrom27.5Hz_sma3nzZNormed",
-    "spectralFlux_sma3ZNormed", "Loudness_sma3ZNormed"
-]
+PROSODY_FEATURES = RELEVANT_GEMAP_FEATURES
 
 # Features for the Full model.
 FULL_FEATURES = PROSODY_FEATURES + POS_TAGS
@@ -226,10 +259,10 @@ class MapTaskDataReader:
                 df = pd.DataFrame.from_dict(item["gemaps"])
                 df.to_csv(path)
             except:
-                print("*" * 30)
-                print(item["dialogue"], item["participant"])
+                logger.debug("*" * 30)
+                logger.debug(item["dialogue"], item["participant"])
                 for k, v in item["gemaps"].items():
-                    print(k, len(v))
+                    logger.debug(k, len(v))
 
         logger.debug("Saving as csvs...")
         dset.map(save_as_csvs,num_proc=num_proc)
@@ -301,9 +334,11 @@ class MapTaskDataReader:
         values = np.asarray(gemaps["values"]).squeeze()
         gemaps_map = dict()
         for i, f in enumerate(features):
-            # Ensure that no value is null
-            self._check_null(item, values[:,i])
-            gemaps_map[f] = np.asarray(values[:,i])
+            # Keep only the relevant GEMAPS feature
+            if f in RELEVANT_GEMAP_FEATURES:
+                # Ensure that no value is null
+                self._check_null(item, values[:,i])
+                gemaps_map[f] = np.asarray(values[:,i])
 
         # Add the frametimes as a feature
         step_s = self.frame_step_size_ms / 1000
@@ -350,7 +385,9 @@ class MapTaskDataReader:
             normed = z_norm_func(values)
             self._check_null(item, normed)
             gemaps_map[f"{feature}ZNormed"] = normed
+
         item["gemaps"] = gemaps_map
+        return item
 
 
     def _extract_pos_with_delay(self, item):
