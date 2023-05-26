@@ -1,3 +1,12 @@
+[project]
+name = "Continuous-Turn-Taking-RNN"
+version = "0.0.1a"
+
+description = "Continuous-Turn-Taking-RNN"
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.10"
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -11,7 +20,6 @@ test = [
     "pytest-xdist",
 ]
 
-
 [tool.setuptools.packages]
 find = {}  # Scanning implicit namespaces is active by default
 
@@ -22,9 +30,9 @@ log_cli_level = "DEBUG"
 log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 
-pythonpath = [
-    "src"
-]
+# pythonpath = [
+#     "turn_taking"
+# ]
 minversion = "6.0"
 addopts = "-rA"
 testpaths = [

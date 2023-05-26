@@ -2,27 +2,40 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 13:17:53
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-02 14:40:38
+# @Last Modified time: 2023-05-22 10:49:54
 
 import sys
 import os
 import pytest
 
 
-from data_lib.maptask.dm import MapTaskVADataModule, MapTaskPauseDataModule
-from data_lib.maptask.maptask import MapTaskDataReader
-from data_lib.maptask.dsets import MapTask, MapTaskVADDataset, MapTaskPauseDataset
-from utils import (
-    get_cache_data_dir,
-    get_output_dir,
-    get_raw_data_dir,
-    get_processed_data_dir,
+from turn_taking.data_lib.maptask.dm import (
+    MapTaskVADataModule,
+    MapTaskPauseDataModule,
+)
+from turn_taking.data_lib.maptask.maptask import MapTaskDataReader
+from turn_taking.data_lib.maptask.dsets import (
+    MapTask,
+    MapTaskVADDataset,
+    MapTaskPauseDataset,
 )
 
-MAPTASK_CACHE_DIR = os.path.join(get_cache_data_dir(), "maptask")
-MAPTASK_RAW_DIR = os.path.join(get_raw_data_dir(), "maptask")
-MAPTASK_TEMP_SAVE_DIR = os.path.join("tests","output","maptask")
+# from utils import (
+#     get_cache_data_dir,
+#     get_output_dir,
+#     get_raw_data_dir,
+#     get_processed_data_dir,
+# )
+
+# MAPTASK_CACHE_DIR = os.path.join(get_cache_data_dir(), "maptask")
+# MAPTASK_RAW_DIR = os.path.join(get_raw_data_dir(), "maptask")
+# MAPTASK_TEMP_SAVE_DIR = os.path.join("tests", "output", "maptask")
 FORCE_REPROCESS = True
+
+
+MAPTASK_CACHE_DIR = "./cache"
+MAPTASK_RAW_DIR = "./raw"
+MAPTASK_TEMP_SAVE_DIR = "./temp"
 
 
 ########
@@ -30,27 +43,19 @@ FORCE_REPROCESS = True
 ########
 
 
-@pytest.mark.parametrize(
-    "variant", ["prosody"]
-)
+@pytest.mark.parametrize("variant", ["prosody"])
 def test_maptask_data_reader(variant):
-    maptask = MapTaskDataReader(
-        num_conversations=None
-    )
+    maptask = MapTaskDataReader(num_conversations=None)
     maptask.prepare_data()
     maptask.setup(
-        variant=variant,
-        save_dir=MAPTASK_TEMP_SAVE_DIR,
-        reset=FORCE_REPROCESS
+        variant=variant, save_dir=MAPTASK_TEMP_SAVE_DIR, reset=FORCE_REPROCESS
     )
     print(maptask.data_paths)
 
 
 def test_maptask_dataset():
-    dset = MapTask(
-        data_dir=MAPTASK_TEMP_SAVE_DIR,
-        num_proc=4
-    )
+    dset = MapTask(data_dir=MAPTASK_TEMP_SAVE_DIR, num_proc=4)
+
 
 # @pytest.mark.parametrize("sequence_length_ms", [10_000])
 # @pytest.mark.parametrize("prediction_length_ms", [500])
@@ -63,12 +68,8 @@ def test_maptask_dataset():
 @pytest.mark.parametrize("target_participant", ["f", "g"])
 @pytest.mark.parametrize("feature_set", ["full", "prosody"])
 def test_maptask_va_dataset(
-    sequence_length_ms,
-    prediction_length_ms,
-    target_participant,
-    feature_set
+    sequence_length_ms, prediction_length_ms, target_participant, feature_set
 ):
-
     dset = MapTaskVADDataset(
         data_dir=MAPTASK_TEMP_SAVE_DIR,
         sequence_length_ms=sequence_length_ms,
@@ -90,7 +91,7 @@ def test_maptask_pause_dataset(
     min_pause_length_ms,
     max_future_silence_window_ms,
     s0_participant,
-    feature_set
+    feature_set,
 ):
     MapTaskPauseDataset(
         data_dir=MAPTASK_TEMP_SAVE_DIR,
@@ -100,7 +101,7 @@ def test_maptask_pause_dataset(
         s0_participant=s0_participant,
         feature_set=feature_set,
         force_reprocess=FORCE_REPROCESS,
-        save_as_csv=True
+        save_as_csv=True,
     )
 
 
@@ -112,13 +113,14 @@ def test_maptask_va_dm():
         feature_set="full",
         target_participant="f",
         batch_size=32,
-        force_reprocess=False
+        force_reprocess=False,
     )
     dm.prepare_data()
     dm.setup()
     loader = dm.train_dataloader()
     x, y = next(iter(loader))
     print(x.shape, y.shape)
+
 
 def test_maptask_pause_dm():
     dm = MapTaskPauseDataModule(
@@ -128,7 +130,7 @@ def test_maptask_pause_dm():
         max_future_silence_window_ms=1000,
         target_participant="f",
         feature_set="full",
-        batch_size=1
+        batch_size=1,
     )
     dm.prepare_data()
     dm.setup()

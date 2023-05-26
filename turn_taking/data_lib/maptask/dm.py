@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-02 12:57:39
+# @Last Modified time: 2023-05-26 15:17:38
 
 import sys
 import os
@@ -19,24 +19,23 @@ from torch.utils.data import DataLoader, random_split
 from .maptask import MapTaskDataReader
 from .dsets import MapTaskVADDataset, MapTaskPauseDataset
 
-from utils import get_cache_data_dir
+from turn_taking.utils import get_cache_data_dir
 
 
 # TODO: Add asserts for function args.
 # NOTE: Num workers is 0 here because Maptask reader cannot be pickled.
 class MapTaskVADataModule(pl.LightningDataModule):
-
     def __init__(
         self,
-        data_dir : str,
-        sequence_length_ms : int,
-        prediction_length_ms : int,
+        data_dir: str,
+        sequence_length_ms: int,
+        prediction_length_ms: int,
         # frame_step_size_ms,# TODO: Enable after bugfix
-        feature_set : str,
-        target_participant : str = "f",
-        batch_size : int = 32,
-        train_split : float = 0.8,
-        force_reprocess : bool = False
+        feature_set: str,
+        target_participant: str = "f",
+        batch_size: int = 32,
+        train_split: float = 0.8,
+        force_reprocess: bool = False,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -62,7 +61,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
             prediction_length_ms=self.prediction_length_ms,
             target_participant=self.target_participant,
             feature_set=self.feature_set,
-            force_reprocess=self.force_reprocess
+            force_reprocess=self.force_reprocess,
         )
 
     def setup(self, stage=None):
@@ -71,7 +70,8 @@ class MapTaskVADataModule(pl.LightningDataModule):
         # Create the train, val, test splits.
         train_split_size = int(len(dset) * self.train_split)
         self.train_dset, val_dset = random_split(
-            dset, [train_split_size, len(dset) - train_split_size])
+            dset, [train_split_size, len(dset) - train_split_size]
+        )
         # Splitting the initial val set equally into the val and test sets.
         test_split_size = int(len(val_dset) * 0.5)
         self.val_dset, self.test_dset = random_split(
@@ -90,7 +90,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
             shuffle=True,
             drop_last=True,
             pin_memory=True,
-            num_workers=0
+            num_workers=0,
         )
 
     def val_dataloader(self):
@@ -100,7 +100,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
             shuffle=False,
             drop_last=True,
             pin_memory=True,
-            num_workers=0
+            num_workers=0,
         )
 
     def test_dataloader(self):
@@ -110,24 +110,23 @@ class MapTaskVADataModule(pl.LightningDataModule):
             shuffle=False,
             drop_last=True,
             pin_memory=True,
-            num_workers=0
+            num_workers=0,
         )
 
 
 class MapTaskPauseDataModule(pl.LightningDataModule):
-
     def __init__(
         self,
-        data_dir : str,
-        sequence_length_ms : int,
-        min_pause_length_ms : int,
-        max_future_silence_window_ms : int,
+        data_dir: str,
+        sequence_length_ms: int,
+        min_pause_length_ms: int,
+        max_future_silence_window_ms: int,
         # frame_step_size_ms, # TODO: Enable after bugfix
-        feature_set : str,
-        target_participant : str = "f",
-        batch_size : int = 32,
-        train_split : float = 0.8,
-        force_reprocess : bool = False
+        feature_set: str,
+        target_participant: str = "f",
+        batch_size: int = 32,
+        train_split: float = 0.8,
+        force_reprocess: bool = False,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -152,7 +151,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
             max_future_silence_window_ms=self.max_future_silence_window_ms,
             s0_participant=self.target_participant,
             feature_set=self.feature_set,
-            force_reprocess=self.force_reprocess
+            force_reprocess=self.force_reprocess,
         )
 
     def setup(self, stage=None):
@@ -161,7 +160,8 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         # Create the train, val, test splits.
         train_split_size = int(len(dset) * self.train_split)
         self.train_dset, val_dset = random_split(
-            dset, [train_split_size, len(dset) - train_split_size])
+            dset, [train_split_size, len(dset) - train_split_size]
+        )
         # Splitting the initial val set equally into the val and test sets.
         test_split_size = int(len(val_dset) * 0.5)
         self.val_dset, self.test_dset = random_split(
@@ -173,7 +173,6 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         if len(self.val_dset) < self.val_batch_size:
             self.val_batch_size = len(self.val_dset)
 
-
     def train_dataloader(self):
         return DataLoader(
             self.train_dset,
@@ -181,7 +180,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
             shuffle=True,
             drop_last=True,
             pin_memory=True,
-            num_workers=0
+            num_workers=0,
         )
 
     def val_dataloader(self):
@@ -191,7 +190,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
             shuffle=False,
             drop_last=True,
             pin_memory=True,
-            num_workers=0
+            num_workers=0,
         )
 
     def test_dataloader(self):
@@ -201,9 +200,5 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
             shuffle=False,
             drop_last=True,
             pin_memory=True,
-            num_workers=0
+            num_workers=0,
         )
-
-
-
-
