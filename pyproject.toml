@@ -20,8 +20,9 @@ test = [
     "pytest-xdist",
 ]
 
-[tool.setuptools.packages]
-find = {}  # Scanning implicit namespaces is active by default
+[tool.setuptools.packages.find]
+where = ["src"]
+# find = {"src"}  # Scanning implicit namespaces is active by default
 
 # pyproject.toml
 [tool.pytest.ini_options]
@@ -30,9 +31,9 @@ log_cli_level = "DEBUG"
 log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 
-# pythonpath = [
-#     "turn_taking"
-# ]
+pythonpath = [
+    "src"
+]
 minversion = "6.0"
 addopts = "-rA"
 testpaths = [

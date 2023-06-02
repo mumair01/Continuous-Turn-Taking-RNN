@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-05-26 15:17:38
+# @Last Modified time: 2023-05-31 11:38:20
 
 import sys
 import os
@@ -17,7 +17,7 @@ import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
 from .maptask import MapTaskDataReader
-from .dsets import MapTaskVADDataset, MapTaskPauseDataset
+from .datasets import MapTaskVADDataset, MapTaskPauseDataset
 
 from turn_taking.utils import get_cache_data_dir
 

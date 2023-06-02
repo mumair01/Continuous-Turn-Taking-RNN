@@ -2,173 +2,77 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-05-26 15:17:04
+# @Last Modified time: 2023-06-02 11:26:11
 
 import sys
 import os
-from typing import List, Dict
+import glob
+from collections import defaultdict
+
+import pandas as pd
+import numpy as np
+import torch.nn as nn
+import sklearn
+from datasets import Dataset, load_from_disk
+
 
 from data_pipelines.features import OpenSmile, extract_feature_set
 from data_pipelines.datasets import load_data
-import pandas as pd
 
-from datasets import concatenate_datasets, Dataset
-import sklearn
-from functools import partial
+from turn_taking.dsets.utils import reset_dir
+from turn_taking.dsets.maptask.constants import MapTaskConstants
 
-import numpy as np
-from collections import defaultdict
-
-import torch
-import torch.nn as nn
-import datasets
-from datasets import load_dataset, load_from_disk
-
-import pytorch_lightning as pl
-
-import glob
-
-from turn_taking.utils import reset_dir
+from typing import List, Callable, Dict
 
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-# Create a vocabulary from all the POS annotation tags
-# Documentation to the MapTask POS tags:  https://groups.inf.ed.ac.uk/maptask/interface/expl.html
-POS_TAGS = [
-    "vb",
-    "vbd",
-    "vbg",
-    "vbn",
-    "vbz",
-    "nn",
-    "nns",
-    "np",
-    "jj",
-    "jjr",
-    "jjt",
-    "ql",
-    "qldt",
-    "qlp",
-    "rb",
-    "rbr",
-    "wql",
-    "wrb",
-    "not",
-    "to",
-    "be",
-    "bem",
-    "ber",
-    "bez",
-    "do",
-    "doz",
-    "hv",
-    "hvz",
-    "md",
-    "dpr",
-    "at",
-    "dt",
-    "ppg",
-    "wdt",
-    "ap",
-    "cd",
-    "od",
-    "gen",
-    "ex",
-    "pd",
-    "wps",
-    "wpo",
-    "pps",
-    "ppss",
-    "ppo",
-    "ppl",
-    "ppg2",
-    "pr",
-    "pn",
-    "in",
-    "rp",
-    "cc",
-    "cs",
-    "aff",
-    "fp",
-    "noi",
-    "pau",
-    "frag",
-    "sent",
-]
-
-
-GEMAPS_FREQUENCY_FEATURES = [
-    "F0semitoneFrom27.5Hz_sma3nz",  # Pitch: logarithmic F0 on a semitone frequency scale, starting at 27.5 Hz (semitone 0)
-    # "jitterLocal_sma3nz", # Jitter, deviations in individual consecutive F0 period lengths.
-    #  # Formant 1, 2, and 3 frequency, centre frequency of first, second, and third formant
-    # "F1frequency_sma3nz",
-    # "F2frequency_sma3nz",
-    # "F3frequency_sma3nz",
-    # "F1bandwidth_sma3nz"
-]
-
-GEMAPS_ENERGY_FEATURES = [
-    # "shimmerLocaldB_sma3nz", # Shimmer, difference of the peak amplitudes of consecutive F0 periods.
-    "Loudness_sma3",  # Loudness, estimate of perceived signal intensity from an auditory spectrum.
-    # "HNRdBACF_sma3nz" # Harmonics-to-Noise Ratio (HNR), relation of energy in harmonic components to energy in noiselike components.
-]
-
-GEMAPS_SPECTRAL_FEATURES = [
+# Step sizes that this data reader can currently support.
+_SUPPORTED_STEP_SIZES = (10,)
+# The datasets that can currently be created.
+_SUPPORTED_VARIANTS = ("full", "prosody")
+# Features to z-normalize.
+_NORM_FEATURES = [
+    "F0semitoneFrom27.5Hz_sma3nz",
+    "Loudness_sma3",
     "spectralFlux_sma3",
-    # "alphaRatio_sma3", #  Alpha Ratio, ratio of the summed energy from 50–1000 Hz and 1–5 kHz
-    # "hammarbergIndex_sma3",  # Hammarberg Index, ratio of the strongest energy peak in the 0–2 kHz region to the strongest peak in the 2–5 kHz region
-    # # Spectral Slope 0–500 Hz and 500–1500 Hz, linear regression slope of the logarithmic power spectrum within the two given bands
-    # "slope0-500_sma3",
-    # "slope500-1500_sma3",
-    # # Formant 1, 2, and 3 relative energy, as well as the ratio of the energy of the spectral harmonic
-    # # peak at the first, second, third formant’s centre frequency to the energy of the spectral peak at F0.
-    # "F1amplitudeLogRelF0_sma3nz",
-    # "F2amplitudeLogRelF0_sma3nz",
-    # "F3amplitudeLogRelF0_sma3nz",
-    # "logRelF0-H1-H2_sma3nz", # Harmonic difference H1–H2, ratio of energy of the first F0 harmonic (H1) to the energy of the second F0 harmonic (H2)
-    # "logRelF0-H1-A3_sma3nz" # Harmonic difference H1–A3, ratio of energy of the first F0 harmonic (H1) to the energy of the highest harmonic in the third formant range (A3).
 ]
-
-
-RELEVANT_GEMAP_FEATURES = (
-    GEMAPS_FREQUENCY_FEATURES
-    + GEMAPS_ENERGY_FEATURES
-    + GEMAPS_SPECTRAL_FEATURES
-)
-
-
-# Features for both the prosody model.
-# TODO: Check whether frameTime is a feature used in the paper.
-PROSODY_FEATURES = RELEVANT_GEMAP_FEATURES
-
-# Features for the Full model.
-FULL_FEATURES = PROSODY_FEATURES + POS_TAGS
+# # The delay added to parts of speech to simulate incoming data.
+# _POS_DELAY_S = 0.1
 
 
 # TODO: Fix single instance crashing issue!
 class MapTaskDataReader:
-    SUPPORTED_STEP_SIZES = (10,)
-    SUPPORTED_VARIANTS = ("full", "prosody")
-    # Features to z-normalize.
-    NORM_FEATURES = [
-        "F0semitoneFrom27.5Hz_sma3nz",
-        "Loudness_sma3",
-        "spectralFlux_sma3",
-    ]
-    POS_DELAY_S = 0.1
+    """
+    Provides an abstraction over the maptask dataset, creates all relevant
+    features, and provides a mechanism for saving and loading relevant data.
+    """
 
     def __init__(
         self,
         num_conversations: int = None,
         frame_step_size_ms: int = 10,
+        pos_delay_s: float = 0.1,
         num_proc: int = 4,
     ):
+        """
+        Parameters
+        ----------
+        num_conversations : int, optional
+            Number of total maptask conversations to use, if None, uses all
+            available conversations. Note that a single conversation includes
+            both the f and g component of the conversation (which is actually 2
+            distinct audio files), by default None
+        frame_step_size_ms : int, optional
+            Step size for each frame. Only 10 is currently supported, by default 10
+        num_proc : int, optional
+            Number of processes to use when generating dataset, by default 4
+        """
         assert (
-            frame_step_size_ms in self.SUPPORTED_STEP_SIZES
-        ), f"ERROR: Frame step size must be in {self.SUPPORTED_STEP_SIZES}"
+            frame_step_size_ms in _SUPPORTED_STEP_SIZES
+        ), f"ERROR: Frame step size must be in {_SUPPORTED_STEP_SIZES}"
 
         assert num_proc > 0, f"ERROR: Num process {num_proc} not > 0"
 
@@ -180,19 +84,29 @@ class MapTaskDataReader:
         )
 
         self.frame_step_size_ms = frame_step_size_ms
+        self.pos_delay_s = pos_delay_s
         self.num_conversations = num_conversations
         self.num_proc = num_proc
+        self.save_dir = None
 
         if num_conversations != None:
             self.num_proc = min(num_proc, num_conversations)
 
     @property
-    def data_paths(self):
+    def data_paths(self) -> List[str]:
+        """
+        Obtain the paths of the underlying data files
+        NOTE: Prepare_data must have been called
+        """
         return self.paths
 
-    def prepare_data(self):
+    def prepare_data(self) -> None:
         """
         Download the maptask data if required and prepare for setup.
+
+        Attributes set
+        --------------
+        self.paths, which can be obtained via data_paths
         """
         dset_def = load_data("maptask")["full"]
         dset_aud = load_data("maptask", variant="audio")["full"]
@@ -209,15 +123,45 @@ class MapTaskDataReader:
             dset = dset.select(range(num_conversations))
         self.dset = dset
 
-    def setup(self, variant, save_dir, reset=False):
+    def setup(self, variant: str, save_dir: str, reset=False):
+        """
+        Create all relevant features that are required from the underlying
+        dataset.
+
+        Parameters
+        ----------
+        variant : str
+            Type of maptask variant, either 'full' or 'prosody'
+        save_dir : str
+            Path to the output directory where the prepared datasets should be
+            saved.
+        reset : bool, optional
+            If reset, overwrites the existing output directory if it exists ,
+            by default False
+        """
         assert (
-            variant in self.SUPPORTED_VARIANTS
-        ), f"ERROR: Variant {variant} must be in {self.SUPPORTED_VARIANTS}"
+            variant in _SUPPORTED_VARIANTS
+        ), f"ERROR: Variant {variant} must be in {_SUPPORTED_VARIANTS}"
 
         # Create the save path
         os.makedirs(save_dir, exist_ok=True)
         if reset:
             reset_dir(save_dir)
+
+        # Force a reset of the number of conversations on disk is not the same
+        # as currently needed
+        if os.path.isdir(f"{save_dir}/{variant}"):
+            print("HERE!", f"{save_dir}/{variant}")
+            # paths = glob.glob("{}/*.csv".format(f"{save_dir}/{variant}"))
+            self.load_from_dir(f"{save_dir}/{variant}")
+            prev_len = len(self.paths["f"])
+            if prev_len < self.num_conversations:
+                reset = True
+                logger.info(
+                    f"Forcing a reset since current number of"
+                    f" conversations is {self.num_conversations}, previous was {prev_len}"
+                )
+            return
 
         logger.info(
             f"Processing maptask for variant: {variant}\n"
@@ -274,9 +218,24 @@ class MapTaskDataReader:
         logger.debug("Saving as csvs...")
         dset.map(save_as_csvs, num_proc=num_proc)
 
-        self.load_from_dir(f"{save_dir}/{variant}")
+        self.load_from_dir(save_dir)
+        self.save_dir = save_dir
 
-    def load_from_dir(self, dir_path):
+    def load_from_dir(self, dir_path: str) -> None:
+        """
+        Loads a dataset that was previously prepared by MapTaskDataReader
+        from disk.
+
+        Parameters
+        ----------
+        dir_path : str
+            Path to the directory where the dataset was saved.
+
+        Attributes Set
+        -------------
+        self.paths: List[str]
+            Sets the paths to the data files, loaded from disk.
+        """
         filepaths = glob.glob("{}/*.csv".format(dir_path))
         paths = defaultdict(lambda: list())
         for path in filepaths:
@@ -287,7 +246,32 @@ class MapTaskDataReader:
             paths[speaker] = sorted(paths[speaker])
         self.paths = {"f": paths["f"], "g": paths["g"]}
 
-    def _apply_processing_fn(self, process, map_fn, dset, save_dir):
+    def _apply_processing_fn(
+        self,
+        process: str,
+        map_fn: Callable,
+        dset: Dataset,
+        save_dir: str,
+    ) -> Dataset:
+        """
+        Apply a map function to the given directory and save the results in
+        the specified output directory.
+
+        Parameters
+        ----------
+        process : str
+            Name of the process i.e, unique identifier used to create a temp. dir.
+        map_fn : Callable
+            Function to be applied on the entire dataset.
+        dset : Dataset
+            Dataset obj.
+        save_dir : str
+            Path to the output directory.
+        Returns
+        -------
+        Dataset
+            Datasets after the map_fn has been applied
+        """
         # Load if exists
         process_filepath = f"{save_dir}/temp/{process}"
         if os.path.exists(process_filepath):
@@ -304,8 +288,14 @@ class MapTaskDataReader:
         Given two datasets of the same length, perform an outer merge i.e,
         take the columns of df2 and append then to df1.
 
-        Returns:
-            Dataset
+        Parameters
+        ----------
+        df1 : Dataset
+        df2 : Dataset
+
+        Returns
+        -------
+        Dataset
         """
         assert len(df1) == len(
             df2
@@ -316,14 +306,30 @@ class MapTaskDataReader:
         assert len(df1) == len(
             merged
         ), f"ERROR: Lengths of dfs must be same: {len(df1)} != {len(merged)}"
-        return Dataset.from_pandas(merged).remove_columns(["__index_level_0__"])
+        # return Dataset.from_pandas(merged).remove_columns(["__index_level_0__"])
+        return Dataset.from_pandas(merged)
 
-    def _extract_gemaps(self, item):
+    def _extract_gemaps(self, item: Dict) -> Dict:
         """
         Add GeMaps field to item containing mapping from feature to 2D values
         array.
+        NOTE: This should be 50 ms but this is a bug in the datasets lib.
+
+        Parameters
+        ----------
+        item : Dict
+            A single item from the maptask dataset
+
+        Returns
+        -------
+        Dict
+            Modified item from the maptask dataset
+
+        Raises
+        ------
+        NotImplementedError
+           Raised if the frame step size is unavailable
         """
-        # NOTE: This should be 50 ms but this is a bug in the datasets lib.
 
         if self.frame_step_size_ms != 10:
             raise NotImplementedError()
@@ -337,7 +343,7 @@ class MapTaskDataReader:
         gemaps_map = dict()
         for i, f in enumerate(features):
             # Keep only the relevant GEMAPS feature
-            if f in RELEVANT_GEMAP_FEATURES:
+            if f in MapTaskConstants.PROSODY_FEATURES:
                 # Ensure that no value is null
                 self._check_null(item, values[:, i])
                 gemaps_map[f] = np.asarray(values[:, i])
@@ -358,10 +364,20 @@ class MapTaskDataReader:
         item["gemaps"] = gemaps_map
         return item
 
-    def _extract_VA_annotations(self, item):
+    def _extract_VA_annotations(self, item: Dict) -> Dict:
         """
         Extract the VA annotations based on when the start and end times of
         each utterance is for each frame, which is based on the frame step size.
+
+        Parameters
+        ----------
+        item : Dict
+            A single item from the maptask dataset
+
+        Returns
+        -------
+        Dict
+            Modified item from the maptask dataset
         """
 
         frame_times = np.asarray(item["gemaps"]["frameTime"])
@@ -380,13 +396,23 @@ class MapTaskDataReader:
         item["gemaps"]["voiceActivity"] = va
         return item
 
-    def _normalize_features(self, item):
+    def _normalize_features(self, item: Dict) -> Dict:
         """
         Normalize and add a new k,v pair for features in NORM_FEATURES.
+
+        Parameters
+        ----------
+        item : Dict
+            A single item from the maptask dataset
+
+        Returns
+        -------
+        Dict
+            Modified item from the maptask dataset
         """
         gemaps_map = item["gemaps"]
         z_norm_func = lambda v: sklearn.preprocessing.scale(v, axis=0)
-        for feature in self.NORM_FEATURES:
+        for feature in _NORM_FEATURES:
             values = np.asarray(gemaps_map[feature])
             normed = z_norm_func(values)
             self._check_null(item, normed)
@@ -398,13 +424,23 @@ class MapTaskDataReader:
     def _extract_pos_with_delay(self, item):
         """
         Extract parts of speech and add them with a specific delay.
+
+        Parameters
+        ----------
+        item : Dict
+            A single item from the maptask dataset
+
+        Returns
+        -------
+        Dict
+            Modified item from the maptask dataset
         """
 
         # Building a vocabulary for the POS
         pos_tags_to_idx = {}
         idx_to_pos_tag = {}
         # NOTE: Indices start from 1 here because 0 already represents unknown categories.
-        for i, tag in enumerate(POS_TAGS):
+        for i, tag in enumerate(MapTaskConstants.POS_TAGS):
             pos_tags_to_idx[tag] = i + 1
             idx_to_pos_tag[i + 1] = tag
 
@@ -413,13 +449,13 @@ class MapTaskDataReader:
         pos = [
             (utt["end"], utt["pos"])
             for utt in item["utterances"]
-            if utt["pos"] in POS_TAGS
+            if utt["pos"] in MapTaskConstants.POS_TAGS
         ]
         pos_annotations = np.zeros((frame_times.shape[0]))
         for end_time_s, pos_tag in pos:
             # TODO: the pos delay time should be set somewhere.
             frame_idx = np.abs(
-                frame_times - (end_time_s + self.POS_DELAY_S)
+                frame_times - (end_time_s + _POS_DELAY_S)
             ).argmin()
             # Convert to integer based on the vocabulary dictionary.
             pos_annotations[frame_idx] = pos_tags_to_idx[pos_tag]
@@ -444,7 +480,20 @@ class MapTaskDataReader:
 
         return item
 
-    def _check_null(self, item, arr):
+    def _check_null(self, item: Dict, arr: np.asarray):
+        """
+        Check whether there is a null value in the given array for the given item
+
+        Parameters
+        ----------
+        item : Dict
+        arr : np.asarray
+
+        Raises
+        ------
+        Exception
+            Raised if there is any null value in arr.
+        """
         if np.isnan(arr).any():
             d, p = item["dialogue"], item["participant"]
             msg = f"Null values encountered in gemaps: {d}, {p}"
