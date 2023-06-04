@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2023-06-04 13:50:56
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 14:36:38
+# @Last Modified time: 2023-06-04 14:40:45
 
 import pytest
 from turn_taking.models.gcttLSTM import GCTTLSTM
@@ -22,8 +22,8 @@ def test_va_predictor(
         prediction_length_ms=1000,
         feature_set="full",
         target_participant="f",
-        batch_size=1,
-        num_conversations=1,
+        batch_size=32,
+        num_conversations=10,
         force_reprocess=force_reprocess,
     )
     dm.prepare_data()
@@ -31,14 +31,13 @@ def test_va_predictor(
     # Checking the dims.
     loader = dm.train_dataloader()
     x, y = next(iter(loader))
-    print(x.shape, y.shape)
 
     model = GCTTLSTM(
-        input_dim=130,
+        input_dim=x.shape[-1],
         hidden_dim=40,  # Number of features of the hidden state
-        out_features=100,  # Number of output time steps,
+        out_features=y.shape[-1],  # Number of output time steps,
         num_layers=1,
     )
 
-    trainer = Trainer(max_epochs=1)
+    trainer = Trainer(max_epochs=5)
     trainer.fit(model, dm)
