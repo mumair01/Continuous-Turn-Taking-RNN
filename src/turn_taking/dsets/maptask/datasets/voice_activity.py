@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2023-05-31 11:34:38
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-05-31 16:53:03
+# @Last Modified time: 2023-06-04 12:37:11
 
 
 import sys
@@ -10,15 +10,10 @@ import os
 import glob
 
 import pandas as pd
-from datasets import Dataset
 import numpy as np
-import torch
-import torch.nn as nn
 import h5py
 
-
-from .base import MapTask
-from turn_taking.utils import reset_dir
+from ..maptask import MapTaskDataReader
 from tqdm import tqdm
 
 import logging
@@ -26,9 +21,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class MapTaskVADDataset(MapTask):
-    DATASET_NAME = "va_dataset"
-
+class MapTaskVADDataset:
     def __init__(
         self,
         data_dir: str,
@@ -37,14 +30,29 @@ class MapTaskVADDataset(MapTask):
         target_participant: int,
         feature_set: str,
         # TODO: Make this configurable when reader bugs are fixed.
-        # frame_step_size_ms : int = 10
+        frame_step_size_ms: int = 10,
         force_reprocess: bool = False,
         num_proc: int = 4,
         num_conversations: int = None,
     ):
-        super().__init__(data_dir, num_proc, num_conversations)
-        # Vars.
-        frame_step_size_ms = 10  # TODO: Remove hard coded value layer
+        assert (
+            frame_step_size_ms == 10
+        ), f"ERROR: Only 10ms frame step size currently supported"
+
+        # TODO: Add the pos delay as a parameter
+        # Create the underlying dataset
+        maptask = MapTaskDataReader(
+            num_conversations=num_conversations,
+            frame_step_size_ms=frame_step_size_ms,
+            num_proc=num_proc,
+        )
+        maptask.prepare_data()
+        maptask.setup(
+            save_dir=f"{data_dir}/maptask", force_reset=force_reprocess
+        )
+        self.paths = maptask.data_paths
+
+        # Save vars.
         self.data_dir = data_dir
         self.sequence_length_ms = sequence_length_ms
         self.prediction_length_ms = prediction_length_ms
@@ -53,22 +61,27 @@ class MapTaskVADDataset(MapTask):
         self.feature_set = feature_set
         self.force_reprocess = force_reprocess
         # Calculated
-        self.num_context_frames = int(sequence_length_ms / frame_step_size_ms)
-        self.num_target_frames = int(prediction_length_ms / frame_step_size_ms)
-
+        self.num_context_frames = int(
+            sequence_length_ms / self.frame_step_size_ms
+        )
+        self.num_target_frames = int(
+            prediction_length_ms / self.frame_step_size_ms
+        )
         self.length = 0
+
+        #### Setting up directories and h5 file for underlying data storage.
         # Create output dir
-        self.save_dir_path = data_dir
-        os.makedirs(self.save_dir_path, exist_ok=True)
+        os.makedirs(data_dir, exist_ok=True)
         # H5py management
         self.dset_save_path = os.path.join(
-            self.save_dir_path, f"{self.DATASET_NAME}.{self.feature_set}.h5"
+            data_dir, f"va_dataset.{self.feature_set}.h5"
         )
         self.group_name = (
             f"{self.feature_set}/{self.target_participant}/"
             f"{self.sequence_length_ms}/{self.prediction_length_ms}"
         )
 
+        # Prepare the dataset
         self._prepare()
 
     def __len__(self):
