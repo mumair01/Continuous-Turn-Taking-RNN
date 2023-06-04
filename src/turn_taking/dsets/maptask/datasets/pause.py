@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2023-05-31 11:34:34
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 12:56:36
+# @Last Modified time: 2023-06-04 14:32:06
 
 
 import sys
@@ -18,7 +18,7 @@ import h5py
 
 
 from .maptask import MapTaskDataReader
-from turn_taking.utils import reset_dir
+from turn_taking.dsets.utils import reset_dir
 from tqdm import tqdm
 
 import logging
@@ -137,7 +137,7 @@ class MapTaskPauseDataset:
             f"num_holds: {self.num_holds}",
             f"num_shifts: {self.num_shifts}",
             f"num_pauses: {self.num_pauses}",
-            f"s0_participant: {self.s0_participant}",
+            f"s0_participant: {self.target_participant}",
         )
 
     ##########

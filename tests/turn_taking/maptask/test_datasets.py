@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2023-05-31 11:38:43
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 12:47:27
+# @Last Modified time: 2023-06-04 14:25:13
 
 
 import pytest
@@ -25,7 +25,6 @@ def test_maptask_va_dataset(
     save_dir,
     force_reprocess,
 ):
-    print(save_dir)
     dset = MapTaskVADDataset(
         data_dir=save_dir,
         sequence_length_ms=sequence_length_ms,
@@ -36,7 +35,7 @@ def test_maptask_va_dataset(
         num_conversations=4,
     )
     # TODO: Add assert statements for length.
-    print(len(dset))
+    assert len(dset) > 0
 
 
 @pytest.mark.data
@@ -54,7 +53,7 @@ def test_maptask_pause_dataset(
     save_dir,
     force_reprocess,
 ):
-    MapTaskPauseDataset(
+    dset = MapTaskPauseDataset(
         data_dir=save_dir,
         sequence_length_ms=sequence_length_ms,
         min_pause_length_ms=min_pause_length_ms,
@@ -65,3 +64,4 @@ def test_maptask_pause_dataset(
         save_as_csv=True,
         num_conversations=4,
     )
+    assert len(dset) > 0

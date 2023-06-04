@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 13:06:53
+# @Last Modified time: 2023-06-04 14:24:03
 
 import sys
 import os
@@ -120,6 +120,9 @@ class MapTaskDataReader:
                 else dialogues[: self.num_conversations]
             )
             dset = dset.filter(lambda item: item["dialogue"] in dialogues)
+        else:
+            # Update num conversations
+            self.num_conversations = len(sorted(list(set(dset["dialogue"]))))
 
         self.dset = dset
 

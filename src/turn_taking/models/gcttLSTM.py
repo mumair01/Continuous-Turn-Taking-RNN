@@ -2,24 +2,29 @@
 # @Author: Muhammad Umair
 # @Date:   2022-08-26 18:35:51
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2022-12-24 20:08:08
+# @Last Modified time: 2023-06-04 13:55:58
 
 
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 
-class VoiceActivityPredictor(pl.LightningModule):
+
+class GCTTLSTM(pl.LightningModule):
+    """
+    Turn-Taking model as described in this paper:
+    https://aclanthology.org/W17-5527.pdf
+    """
 
     def __init__(
         self,
-        input_dim : int,
-        hidden_dim : int,
-        out_features : int,
-        num_layers : int = 1,
-        loss_fn : str = "mae",
-        learning_rate : float = 0.01,
-        weight_decay : float = 0.001
+        input_dim: int,
+        hidden_dim: int,
+        out_features: int,
+        num_layers: int = 1,
+        loss_fn: str = "mae",
+        learning_rate: float = 0.01,
+        weight_decay: float = 0.001,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -36,22 +41,17 @@ class VoiceActivityPredictor(pl.LightningModule):
             input_size=input_dim,
             hidden_size=hidden_dim,
             num_layers=num_layers,
-            batch_first=True
+            batch_first=True,
         )
         self.fc = nn.Sequential(
-            nn.Linear(
-                in_features=hidden_dim,
-                out_features=out_features
-            ),
-            nn.Sigmoid()
+            nn.Linear(in_features=hidden_dim, out_features=out_features),
+            nn.Sigmoid(),
         )
 
         if loss_fn == "mae":
             self.loss_fn = nn.L1Loss()
         else:
-            raise NotImplementedError(
-                f"Loss not implemented: {loss_fn}"
-            )
+            raise NotImplementedError(f"Loss not implemented: {loss_fn}")
 
     def forward(self, batch):
         """
@@ -60,11 +60,11 @@ class VoiceActivityPredictor(pl.LightningModule):
         """
         # Initialize the hidden states for first input with zeroes.
         h0 = torch.zeros(
-            self.num_layers,batch.size(0),self.hidden_dim
+            self.num_layers, batch.size(0), self.hidden_dim
         ).requires_grad_()
         # Initialize the cell state for the first input with zeroes.
         c0 = torch.zeros(
-            self.num_layers, batch.size(0),self.hidden_dim
+            self.num_layers, batch.size(0), self.hidden_dim
         ).requires_grad_()
 
         # We need to detach as we are doing truncated backpropagation through
@@ -76,11 +76,11 @@ class VoiceActivityPredictor(pl.LightningModule):
         # h_n /c_n is the hidden value from the last time-step of all RNN layers.
         # out shape: (batch_size, seq_len, 1 * hidden_size)
         # h_n shape: (num_layers * 1, batch_size, hidden_size)
-        out, _ = self.lstm(batch.float(),(h0.detach(), c0.detach()))
+        out, _ = self.lstm(batch.float(), (h0.detach(), c0.detach()))
 
         # Based on the paper, we are interested in the prediction made at the
         # last timestamp.
-        out = out[:,-1,:]
+        out = out[:, -1, :]
         # Fully connected is: Sigmoid(wx +b)
         out = self.fc(out)
         # out shape: (batch_size, output_dim)
@@ -96,7 +96,7 @@ class VoiceActivityPredictor(pl.LightningModule):
         """
         x, y = batch
         # x.type(torch.FloatTensor) # NOTE: Should remove
-        out = self.forward(x) # out shape: (batch_size, N)
+        out = self.forward(x)  # out shape: (batch_size, N)
         loss = self.loss_fn(y, out)
         self.log("train_loss", loss)
         return loss
@@ -124,6 +124,5 @@ class VoiceActivityPredictor(pl.LightningModule):
         return torch.optim.RMSprop(
             self.parameters(),
             lr=self.learning_rate,
-            weight_decay=self.weight_decay
+            weight_decay=self.weight_decay,
         )
-

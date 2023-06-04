@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 12:56:33
+# @Last Modified time: 2023-06-04 14:33:30
 
 import sys
 import os
@@ -16,10 +16,7 @@ from datasets import Dataset
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 
-from .datasets.maptask import MapTaskDataReader
 from .datasets import MapTaskVADDataset, MapTaskPauseDataset
-
-from turn_taking.utils import get_cache_data_dir
 
 
 # TODO: Add asserts for function args.
@@ -35,6 +32,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
         target_participant: str = "f",
         batch_size: int = 32,
         train_split: float = 0.8,
+        num_conversations: int = 5,
         force_reprocess: bool = False,
     ):
         super().__init__()
@@ -51,6 +49,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
         self.train_batch_size = batch_size
         self.val_batch_size = batch_size
         self.train_split = train_split
+        self.num_conversations = num_conversations
         self.force_reprocess = force_reprocess
 
     def prepare_data(self):
@@ -61,6 +60,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
             prediction_length_ms=self.prediction_length_ms,
             target_participant=self.target_participant,
             feature_set=self.feature_set,
+            num_conversations=self.num_conversations,
             force_reprocess=self.force_reprocess,
         )
 
@@ -77,6 +77,9 @@ class MapTaskVADataModule(pl.LightningDataModule):
         self.val_dset, self.test_dset = random_split(
             val_dset, [len(val_dset) - test_split_size, test_split_size]
         )
+
+        print(len(self.train_dset))
+
         # Set up the batch sizes
         if len(self.train_dset) < self.train_batch_size:
             self.train_batch_size = len(self.train_dset)
@@ -126,6 +129,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         target_participant: str = "f",
         batch_size: int = 32,
         train_split: float = 0.8,
+        num_conversations: int = 5,
         force_reprocess: bool = False,
     ):
         super().__init__()
@@ -141,6 +145,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         self.train_batch_size = batch_size
         self.val_batch_size = batch_size
         self.train_split = train_split
+        self.num_conversations = num_conversations
         self.force_reprocess = force_reprocess
 
     def prepare_data(self):
@@ -151,6 +156,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
             max_future_silence_window_ms=self.max_future_silence_window_ms,
             s0_participant=self.target_participant,
             feature_set=self.feature_set,
+            num_conversations=self.num_conversations,
             force_reprocess=self.force_reprocess,
         )
 
