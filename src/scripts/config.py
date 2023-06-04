@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-24 20:55:30
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-01-02 16:56:32
+# @Last Modified time: 2023-06-04 14:51:35
 
 import sys
 import os
@@ -10,23 +10,35 @@ import os
 import hydra
 from hydra.core.config_store import ConfigStore
 from hydra_zen import (
-    builds, make_config, make_custom_builds_fn, instantiate, MISSING
+    builds,
+    make_config,
+    make_custom_builds_fn,
+    instantiate,
+    MISSING,
 )
 
-from data_lib.maptask import MapTaskPauseDataModule, MapTaskVADataModule
-from models.va_predictor import VoiceActivityPredictor
+from turn_taking.dsets.maptask import (
+    MapTaskPauseDataModule,
+    MapTaskVADataModule,
+)
+from turn_taking.models import GCTTLSTM
+
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 
-from utils import (
-    get_cache_data_dir, get_output_dir, get_root_path
-)
 
 ###############
 # Paths
 ###############
-MAPTASK_DATA_DIR = os.path.join(get_cache_data_dir(),"maptask")
+
+
+PROJECT_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+RESULTS_DIR = os.path.join(PROJECT_ROOT_DIR, "results")
+CACHE_DIR = os.path.join(RESULTS_DIR, "cache")
+
+
+MAPTASK_DATA_DIR = os.path.join(CACHE_DIR, "maptask")
 
 ###############
 # Custom Builds
@@ -50,7 +62,7 @@ MaptaskVADMConf = builds(
     target_participant=MISSING,
     batch_size=32,
     train_split=0.8,
-    force_reprocess=False
+    force_reprocess=False,
 )
 
 MaptaskPauseDMConf = builds(
@@ -63,7 +75,7 @@ MaptaskPauseDMConf = builds(
     target_participant=MISSING,
     batch_size=32,
     train_split=0.8,
-    force_reprocess=False
+    force_reprocess=False,
 )
 
 
@@ -72,19 +84,19 @@ MaptaskPauseDMConf = builds(
 ###############
 
 FullModelConf = pbuilds(
-    VoiceActivityPredictor,
-    input_dim=MISSING, # This is based on the no. of features of the full dataset.
-    hidden_dim=40, # Number of features of the hidden state
-    out_features=MISSING, # int(prediction_length_ms/frame_step_size)
-    num_layers=1
+    GCTTLSTM,
+    input_dim=MISSING,  # This is based on the no. of features of the full dataset.
+    hidden_dim=40,  # Number of features of the hidden state
+    out_features=MISSING,  # int(prediction_length_ms/frame_step_size)
+    num_layers=1,
 )
 
 ProsodyModelConf = pbuilds(
-    VoiceActivityPredictor,
-    input_dim=MISSING, # This is based on the no. of features of the full dataset.
-    hidden_dim=10, # Number of features of the hidden state
-    out_features=MISSING, # int(prediction_length_ms/frame_step_size)
-    num_layers=1
+    GCTTLSTM,
+    input_dim=MISSING,  # This is based on the no. of features of the full dataset.
+    hidden_dim=10,  # Number of features of the hidden state
+    out_features=MISSING,  # int(prediction_length_ms/frame_step_size)
+    num_layers=1,
 )
 
 ###############
@@ -97,7 +109,7 @@ TrainerConf = pbuilds(
     log_every_n_steps=50,
     max_epochs=1000,
     accelerator="auto",
-    auto_select_gpus=True
+    # auto_select_gpus=True,
 )
 
 cs = ConfigStore.instance()

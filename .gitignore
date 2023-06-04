@@ -136,3 +136,5 @@ output/
 test_results/
 
 lightning_logs/
+
+results/
