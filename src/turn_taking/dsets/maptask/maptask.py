@@ -2,12 +2,13 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-02 11:26:11
+# @Last Modified time: 2023-06-04 12:00:13
 
 import sys
 import os
 import glob
 from collections import defaultdict
+import json
 
 import pandas as pd
 import numpy as np
@@ -27,6 +28,8 @@ from typing import List, Callable, Dict
 import logging
 
 logger = logging.getLogger(__name__)
+
+# TODO: Update the documentation and make the path names variables.
 
 
 # Step sizes that this data reader can currently support.
@@ -76,18 +79,12 @@ class MapTaskDataReader:
 
         assert num_proc > 0, f"ERROR: Num process {num_proc} not > 0"
 
-        # Num conversations has to be even since we need to get at least one
-        # f and g pair.
-        assert num_conversations == None or num_conversations % 2 == 0, (
-            f"ERROR: Num conversations specified as {num_conversations}"
-            ", but has to be even"
-        )
-
         self.frame_step_size_ms = frame_step_size_ms
         self.pos_delay_s = pos_delay_s
         self.num_conversations = num_conversations
         self.num_proc = num_proc
         self.save_dir = None
+        self.paths = defaultdict(lambda: dict)
 
         if num_conversations != None:
             self.num_proc = min(num_proc, num_conversations)
@@ -96,9 +93,9 @@ class MapTaskDataReader:
     def data_paths(self) -> List[str]:
         """
         Obtain the paths of the underlying data files
-        NOTE: Prepare_data must have been called
+        NOTE: setup must have been called
         """
-        return self.paths
+        return dict(self.paths)
 
     def prepare_data(self) -> None:
         """
@@ -113,115 +110,133 @@ class MapTaskDataReader:
         # Merge the acoustic and default dataset columns.
         dset = self._merge_datasets(dset_def, dset_aud)
 
-        # Get a subset of the data if required.
+        # Obtain a subset of the data if required
         if self.num_conversations != None:
-            num_conversations = (
-                len(dset)
-                if self.num_conversations > len(dset)
-                else self.num_conversations
+            # Get unique dialogue names and select corresponding f and g files
+            dialogues = sorted(list(set(dset["dialogue"])))
+            dialogues = (
+                dialogues
+                if self.num_conversations > len(dialogues)
+                else dialogues[: self.num_conversations]
             )
-            dset = dset.select(range(num_conversations))
+            dset = dset.filter(lambda item: item["dialogue"] in dialogues)
+
         self.dset = dset
 
-    def setup(self, variant: str, save_dir: str, reset=False):
+    def setup(self, save_dir: str, force_reset=False):
         """
         Create all relevant features that are required from the underlying
-        dataset.
+        dataset for both the full and prosody variants.
 
         Parameters
         ----------
-        variant : str
-            Type of maptask variant, either 'full' or 'prosody'
         save_dir : str
             Path to the output directory where the prepared datasets should be
             saved.
         reset : bool, optional
-            If reset, overwrites the existing output directory if it exists ,
+            If reset, overwrites the existing output directory if it exists,
             by default False
         """
-        assert (
-            variant in _SUPPORTED_VARIANTS
-        ), f"ERROR: Variant {variant} must be in {_SUPPORTED_VARIANTS}"
 
-        # Create the save path
-        os.makedirs(save_dir, exist_ok=True)
-        if reset:
-            reset_dir(save_dir)
+        # Create paths for this variant
 
-        # Force a reset of the number of conversations on disk is not the same
-        # as currently needed
-        if os.path.isdir(f"{save_dir}/{variant}"):
-            print("HERE!", f"{save_dir}/{variant}")
-            # paths = glob.glob("{}/*.csv".format(f"{save_dir}/{variant}"))
-            self.load_from_dir(f"{save_dir}/{variant}")
-            prev_len = len(self.paths["f"])
-            if prev_len < self.num_conversations:
-                reset = True
-                logger.info(
-                    f"Forcing a reset since current number of"
-                    f" conversations is {self.num_conversations}, previous was {prev_len}"
+        cache_dir = f"{save_dir}/cache"
+        os.makedirs(cache_dir, exist_ok=True)
+        for variant in _SUPPORTED_VARIANTS:
+            variant_dir = f"{save_dir}/{variant}"
+            os.makedirs(variant_dir, exist_ok=True)
+
+            logger.info(
+                f"Processing maptask for variant: {variant}\n"
+                f"Number of conversations = {self.num_conversations}\n"
+                f"Number of processes = {self.num_proc}"
+            )
+            # Simply load the appropriate number of paths from disk.
+            if not self._should_reset(variant_dir) and not force_reset:
+                self.paths[variant] = self._load_from_dir(
+                    variant_dir, self.num_conversations
                 )
-            return
+                continue
+            # Otherwise, we need to reset the saved dir. and cache dir and reconstruct.
+            else:
+                reset_dir(variant_dir)
+                if self._should_reset_cache(cache_dir):
+                    reset_dir(cache_dir)
 
-        logger.info(
-            f"Processing maptask for variant: {variant}\n"
-            f"Number of conversations = {self.num_conversations}\n"
-            f"Number of processes = {self.num_proc}"
-        )
+            dset = self.dset
+            num_proc = self.num_proc
 
-        dset = self.dset
-        num_proc = self.num_proc
-
-        # Extract the audio features, which are the eGeMAPS here
-        # Construct the frame times based on the time step ms provided.
-        logger.debug(f"Extracting audio features...")
-        dset = self._apply_processing_fn(
-            "extract_gemaps", self._extract_gemaps, dset, save_dir
-        )
-
-        # Extract VA annotations based on the start and end time of utterances.
-        logger.debug(f"Extracting voice activity annotations...")
-        dset = self._apply_processing_fn(
-            "va", self._extract_VA_annotations, dset, save_dir
-        )
-
-        logger.debug(f"Performing z-normalization for select features...")
-        dset = self._apply_processing_fn(
-            "norm", self._normalize_features, dset, save_dir
-        )
-
-        if variant == "full":
-            # Parts of speech are extracted from the underlying data based on
-            # the variant that we need.
-            logger.debug("Extracting POS with delay...")
+            # Extract the audio features, which are the eGeMAPS here
+            # Construct the frame times based on the time step ms provided.
+            logger.debug(f"Extracting audio features...")
             dset = self._apply_processing_fn(
-                "pos", self._extract_pos_with_delay, dset, save_dir
+                "extract_gemaps", self._extract_gemaps, dset, cache_dir
             )
 
-        # With all of the features, we want to separate into f and g and save.
-        dset = dset.remove_columns(["utterances", "audio_paths"])
+            # Extract VA annotations based on the start and end time of utterances.
+            logger.debug(f"Extracting voice activity annotations...")
+            dset = self._apply_processing_fn(
+                "va", self._extract_VA_annotations, dset, cache_dir
+            )
 
-        # Now, we want to save everything as a csv
-        def save_as_csvs(item):
-            dialogue, participant = item["dialogue"], item["participant"]
-            os.makedirs(f"{save_dir}/{variant}", exist_ok=True)
-            path = f"{save_dir}/{variant}/{dialogue}.{participant}.csv"
-            try:
-                df = pd.DataFrame.from_dict(item["gemaps"])
-                df.to_csv(path)
-            except:
-                logger.debug("*" * 30)
-                logger.debug(item["dialogue"], item["participant"])
-                for k, v in item["gemaps"].items():
-                    logger.debug(k, len(v))
+            logger.debug(f"Performing z-normalization for select features...")
+            dset = self._apply_processing_fn(
+                "norm", self._normalize_features, dset, cache_dir
+            )
 
-        logger.debug("Saving as csvs...")
-        dset.map(save_as_csvs, num_proc=num_proc)
+            if variant == "full":
+                # Parts of speech are extracted from the underlying data based on
+                # the variant that we need.
+                logger.debug("Extracting POS with delay...")
+                dset = self._apply_processing_fn(
+                    "pos", self._extract_pos_with_delay, dset, cache_dir
+                )
 
-        self.load_from_dir(save_dir)
-        self.save_dir = save_dir
+            # Add metadata to the cache dir
+            with open(f"{cache_dir}/metadata.json", "w") as outfile:
+                json.dump(
+                    {"num_conversations": self.num_conversations}, outfile
+                )
 
-    def load_from_dir(self, dir_path: str) -> None:
+            # With all of the features, we want to separate into f and g and save.
+            dset = dset.remove_columns(["utterances", "audio_paths"])
+
+            # Now, we want to save everything as a csv
+            def save_as_csvs(item):
+                dialogue, participant = item["dialogue"], item["participant"]
+                path = f"{variant_dir}/{dialogue}.{participant}.csv"
+                try:
+                    df = pd.DataFrame.from_dict(item["gemaps"])
+                    df.to_csv(path)
+                except:
+                    logger.debug("*" * 30)
+                    logger.debug(item["dialogue"], item["participant"])
+                    for k, v in item["gemaps"].items():
+                        logger.debug(k, len(v))
+
+            logger.debug("Saving as csvs...")
+            dset.map(save_as_csvs, num_proc=num_proc)
+            self.paths[variant] = self._load_from_dir(
+                variant_dir, self.num_conversations
+            )
+
+    def _should_reset(self, variant_path: str) -> bool:
+        if os.path.isdir(variant_path):
+            paths = self._load_from_dir(variant_path)
+            return self.num_conversations > len(paths["f"])
+        return True
+
+    def _should_reset_cache(self, cache_dir: str) -> bool:
+        meta_path = f"{cache_dir}/metadata.json"
+        if not os.path.isfile(meta_path):
+            return True
+        with open(meta_path) as f:
+            data = json.load(f)
+            return data["num_conversations"] != self.num_conversations
+
+    def _load_from_dir(
+        self, dir_path: str, num_conversations: int = None
+    ) -> Dict:
         """
         Loads a dataset that was previously prepared by MapTaskDataReader
         from disk.
@@ -244,14 +259,19 @@ class MapTaskDataReader:
                     paths[speaker].append(path)
         for speaker in ("f", "g"):
             paths[speaker] = sorted(paths[speaker])
-        self.paths = {"f": paths["f"], "g": paths["g"]}
+        if num_conversations == None:
+            num_conversations = len(paths["f"])
+        return {
+            "f": paths["f"][:num_conversations],
+            "g": paths["g"][:num_conversations],
+        }
 
     def _apply_processing_fn(
         self,
         process: str,
         map_fn: Callable,
         dset: Dataset,
-        save_dir: str,
+        cache_dir: str,
     ) -> Dataset:
         """
         Apply a map function to the given directory and save the results in
@@ -273,7 +293,7 @@ class MapTaskDataReader:
             Datasets after the map_fn has been applied
         """
         # Load if exists
-        process_filepath = f"{save_dir}/temp/{process}"
+        process_filepath = f"{cache_dir}/{process}"
         if os.path.exists(process_filepath):
             logger.debug(f"Loading intermediate save for: {process}")
             return load_from_disk(process_filepath)
@@ -455,7 +475,7 @@ class MapTaskDataReader:
         for end_time_s, pos_tag in pos:
             # TODO: the pos delay time should be set somewhere.
             frame_idx = np.abs(
-                frame_times - (end_time_s + _POS_DELAY_S)
+                frame_times - (end_time_s + self.pos_delay_s)
             ).argmin()
             # Convert to integer based on the vocabulary dictionary.
             pos_annotations[frame_idx] = pos_tags_to_idx[pos_tag]
