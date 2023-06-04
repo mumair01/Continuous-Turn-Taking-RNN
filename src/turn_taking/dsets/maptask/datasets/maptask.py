@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 12:00:13
+# @Last Modified time: 2023-06-04 13:06:53
 
 import sys
 import os
@@ -21,7 +21,7 @@ from data_pipelines.features import OpenSmile, extract_feature_set
 from data_pipelines.datasets import load_data
 
 from turn_taking.dsets.utils import reset_dir
-from turn_taking.dsets.maptask.constants import MapTaskConstants
+from turn_taking.dsets.maptask.datasets.constants import MapTaskConstants
 
 from typing import List, Callable, Dict
 
@@ -223,7 +223,11 @@ class MapTaskDataReader:
     def _should_reset(self, variant_path: str) -> bool:
         if os.path.isdir(variant_path):
             paths = self._load_from_dir(variant_path)
-            return self.num_conversations > len(paths["f"])
+            return (
+                self.num_conversations > len(paths["f"])
+                if self.num_conversations
+                else False  # Do not reset if num conversations is none.
+            )
         return True
 
     def _should_reset_cache(self, cache_dir: str) -> bool:

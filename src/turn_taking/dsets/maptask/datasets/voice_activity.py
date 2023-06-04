@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2023-05-31 11:34:38
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 12:37:11
+# @Last Modified time: 2023-06-04 12:56:45
 
 
 import sys
@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 import h5py
 
-from ..maptask import MapTaskDataReader
+from .maptask import MapTaskDataReader
 from tqdm import tqdm
 
 import logging

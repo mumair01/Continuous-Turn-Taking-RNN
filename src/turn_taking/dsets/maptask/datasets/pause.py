@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2023-05-31 11:34:34
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-05-31 11:37:22
+# @Last Modified time: 2023-06-04 12:56:36
 
 
 import sys
@@ -17,7 +17,7 @@ import torch.nn as nn
 import h5py
 
 
-from .base import MapTask
+from .maptask import MapTaskDataReader
 from turn_taking.utils import reset_dir
 from tqdm import tqdm
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: Test this class. Add ability to save pdfs.
-class MapTaskPauseDataset(MapTask):
+class MapTaskPauseDataset:
     HOLD_LABEL = 0
     SHIFT_LABEL = 1
     DATASET_NAME = "pause_dataset"
@@ -49,15 +49,30 @@ class MapTaskPauseDataset(MapTask):
         s0_participant,
         feature_set,
         # TODO: Make this configurable when reader bugs are fixed.
-        # frame_step_size_ms : int = 10
+        frame_step_size_ms: int = 10,
         force_reprocess=False,
         num_proc: int = 4,
         num_conversations: int = None,
         save_as_csv: bool = False,
     ):
-        super().__init__(data_dir, num_proc, num_conversations)
+        assert (
+            frame_step_size_ms == 10
+        ), f"ERROR: Only 10ms frame step size currently supported"
 
-        frame_step_size_ms = 10  # TODO: Remove hard coded value layer
+        #### Create the underlying dataset
+        # TODO: Add the pos delay as a parameter
+        maptask = MapTaskDataReader(
+            num_conversations=num_conversations,
+            frame_step_size_ms=frame_step_size_ms,
+            num_proc=num_proc,
+        )
+        maptask.prepare_data()
+        maptask.setup(
+            save_dir=f"{data_dir}/maptask", force_reset=force_reprocess
+        )
+        self.paths = maptask.data_paths
+
+        # Save vars.
         self.data_dir = data_dir
         self.sequence_length_ms = sequence_length_ms
         self.min_pause_length_ms = min_pause_length_ms
@@ -73,17 +88,16 @@ class MapTaskPauseDataset(MapTask):
         self.future_window_frames = int(
             max_future_silence_window_ms / frame_step_size_ms
         )
-        # Initialize
+        # Init.
         self.num_silences = 0
         self.num_holds = 0
         self.num_shifts = 0
         self.num_pauses = 0
         self.length = 0
 
-        # Create output dir
-        self.save_dir_path = data_dir
-        os.makedirs(self.save_dir_path, exist_ok=True)
-        self.dset_save_path = os.path.join(data_dir, f"{self.DATASET_NAME}.h5")
+        #### Setting up directories and h5 file for underlying data storage.
+        os.makedirs(data_dir, exist_ok=True)
+        self.dset_save_path = os.path.join(data_dir, f"pause_dset.h5")
         self.group_name = (
             f"{self.feature_set}/{self.target_participant}/"
             f"{self.sequence_length_ms}/{self.min_pause_length_ms}/{self.max_future_silence_window_ms}"
@@ -91,7 +105,7 @@ class MapTaskPauseDataset(MapTask):
 
         if self.save_as_csv:
             self.csv_dir_path = (
-                f"{self.data_dir}/{self.DATASET_NAME}/{feature_set}/csvs"
+                f"{self.data_dir}/{self.DATASET_NAME}/{self.group_name}/csvs"
             )
             reset_dir(self.csv_dir_path)
 
@@ -114,6 +128,8 @@ class MapTaskPauseDataset(MapTask):
 
     def __repr__(self):
         return (
+            f"Group naming convention: feature_set/target_participant/"
+            "sequence_length_ms/min_pause_length_ms/max_future_silence_window_ms"
             f"min_pause_length_ms: {self.min_pause_length_ms}",
             f"sequence_length_ms: {self.sequence_length_ms}",
             f"max_future_silence_window_ms: {self.max_future_silence_window_ms}",
@@ -123,6 +139,10 @@ class MapTaskPauseDataset(MapTask):
             f"num_pauses: {self.num_pauses}",
             f"s0_participant: {self.s0_participant}",
         )
+
+    ##########
+    # Methods to load and save the data
+    ##########
 
     def _prepare(self):
         # If the h5 file already exists, simply load from the file.
