@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2023-05-31 11:11:50
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 13:54:37
+# @Last Modified time: 2023-06-05 08:31:22
 
 import pytest
 
@@ -11,7 +11,6 @@ import sys
 import os
 
 
-_FORCE_REPROCESS = False
 _CLEAR_DIRS_AFTER_TEST = False
 _RESET_DIRS_BEFORE_TEST = False
 
@@ -40,8 +39,3 @@ def save_dir(result_dir):
     yield path
     if _CLEAR_DIRS_AFTER_TEST:
         shutil.rmtree(path)
-
-
-@pytest.fixture
-def force_reprocess():
-    return _FORCE_REPROCESS

@@ -2,12 +2,18 @@
 # @Author: Muhammad Umair
 # @Date:   2022-08-26 18:35:51
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 13:55:58
+# @Last Modified time: 2023-06-05 10:32:48
 
 
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+import sys
+
+# Logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GCTTLSTM(pl.LightningModule):
@@ -98,7 +104,7 @@ class GCTTLSTM(pl.LightningModule):
         # x.type(torch.FloatTensor) # NOTE: Should remove
         out = self.forward(x)  # out shape: (batch_size, N)
         loss = self.loss_fn(y, out)
-        self.log("train_loss", loss)
+        self.log("loss/train_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -108,7 +114,7 @@ class GCTTLSTM(pl.LightningModule):
         x, y = batch
         out = self.forward(x)
         loss = self.loss_fn(y, out)
-        self.log("val_loss", loss)
+        self.log("loss/val_loss", loss)
 
     def test_step(self, batch, batch_idx):
         """
@@ -117,7 +123,7 @@ class GCTTLSTM(pl.LightningModule):
         x, y = batch
         out = self.forward(x)
         loss = self.loss_fn(y, out)
-        self.log("test_loss", loss)
+        self.log("loss/test_loss", loss)
 
     def configure_optimizers(self):
         # This is the same optimizer used in the paper.

@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 13:34:59
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 16:02:15
+# @Last Modified time: 2023-06-05 10:32:03
 
 import sys
 import os
@@ -29,10 +29,16 @@ from pytorch_lightning.loggers import CSVLogger, MLFlowLogger
 from turn_taking.dsets.maptask import MapTaskVADataModule
 from config import MaptaskVADMConf, TrainerConf, RESULTS_DIR
 
+from utils import load_user_configs
 
 # Logger
 import logging
 
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)",
+)
 logger = logging.getLogger(__name__)
 
 
@@ -40,17 +46,15 @@ logger = logging.getLogger(__name__)
 # GLOBALS
 ############
 
-EXPERIMENT_NAME = "experiment_4_1"
+_USER_CONFIGS = load_user_configs()["experiment"]["41"]
 
+EXPERIMENT_NAME = _USER_CONFIGS["experiment_name"]
 OUTPUT_DIR = os.path.join(RESULTS_DIR, EXPERIMENT_NAME)
 
-# SEQUENCE_LENGTHS_MS = [60_000]
-# PREDICTION_LENGTHS_MS = [250, 500, 1000, 2000, 3000]
-# TARGET_PARTICIPANTS = ["f", "g"]
-
-SEQUENCE_LENGTHS_MS = [60_000]
-PREDICTION_LENGTHS_MS = [250]
-TARGET_PARTICIPANTS = ["f"]
+SEQUENCE_LENGTHS_MS = _USER_CONFIGS["sequence_length_ms"]
+PREDICTION_LENGTHS_MS = _USER_CONFIGS["prediction_length_ms"]
+TARGET_PARTICIPANTS = _USER_CONFIGS["target_participants"]
+SEED = _USER_CONFIGS["seed"]
 
 ############
 # Experiment Configurations
@@ -58,14 +62,11 @@ TARGET_PARTICIPANTS = ["f"]
 
 # NOTE This is replacing config.yaml from regular hydra.
 ExperimentConfig = make_config(
-    defaults=[
-        "_self_",
-        {"model": None},
-    ],
+    defaults=["_self_", {"model": None}],
     dm=MaptaskVADMConf,
     model=MISSING,
     trainer=TrainerConf,
-    seed=1,
+    seed=SEED,
     # TODO: Add more experiment constants here if needed.
 )
 # Store here so that values can be changed from the command line.
@@ -108,9 +109,9 @@ def task(cfg: ExperimentConfig):
     checkpoint_callback = ModelCheckpoint(
         dirpath=os.path.join(os.getcwd(), "checkpoints"),
         save_top_k=1,
-        monitor="val_loss",
+        monitor="loss/val_loss",
     )
-    early_stopping_callback = EarlyStopping(monitor="val_loss", mode="min")
+    early_stopping_callback = EarlyStopping(monitor="loss/val_loss", mode="min")
 
     # Logger
     # NOTE: Since mlflow and hydra multi-run do not interact well,
@@ -124,6 +125,7 @@ def task(cfg: ExperimentConfig):
             f"feature_set={dm.feature_set}"
         ),
         tracking_uri=f"file:{OUTPUT_DIR}/mlruns",
+        log_model=True,
     )
 
     # Trainer

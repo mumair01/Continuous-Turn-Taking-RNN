@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 14:33:30
+# @Last Modified time: 2023-06-05 10:35:28
 
 import sys
 import os
@@ -87,6 +87,8 @@ class MapTaskVADataModule(pl.LightningDataModule):
             self.val_batch_size = len(self.val_dset)
 
     def train_dataloader(self):
+        # NOTE: num_workers set to 0 because the dataset cannot be processed
+        # in parallel currently.
         return DataLoader(
             self.train_dset,
             batch_size=self.train_batch_size,

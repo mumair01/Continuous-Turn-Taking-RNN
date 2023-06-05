@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 14:24:03
+# @Last Modified time: 2023-06-05 09:35:28
 
 import sys
 import os
@@ -150,15 +150,17 @@ class MapTaskDataReader:
             os.makedirs(variant_dir, exist_ok=True)
 
             logger.info(
-                f"Processing maptask for variant: {variant}\n"
-                f"Number of conversations = {self.num_conversations}\n"
+                f"Processing maptask for variant: {variant}; "
+                f"Number of conversations = {self.num_conversations}; "
                 f"Number of processes = {self.num_proc}"
             )
+            logger.info(force_reset)
             # Simply load the appropriate number of paths from disk.
             if not self._should_reset(variant_dir) and not force_reset:
                 self.paths[variant] = self._load_from_dir(
                     variant_dir, self.num_conversations
                 )
+                logger.info(f"Loading cached data from: {variant_dir}")
                 continue
             # Otherwise, we need to reset the saved dir. and cache dir and reconstruct.
             else:
