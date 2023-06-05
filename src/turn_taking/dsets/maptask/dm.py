@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-21 15:19:06
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-05 10:35:28
+# @Last Modified time: 2023-06-05 10:38:14
 
 import sys
 import os
@@ -32,7 +32,7 @@ class MapTaskVADataModule(pl.LightningDataModule):
         target_participant: str = "f",
         batch_size: int = 32,
         train_split: float = 0.8,
-        num_conversations: int = 5,
+        num_conversations: int = None,
         force_reprocess: bool = False,
     ):
         super().__init__()
@@ -131,7 +131,7 @@ class MapTaskPauseDataModule(pl.LightningDataModule):
         target_participant: str = "f",
         batch_size: int = 32,
         train_split: float = 0.8,
-        num_conversations: int = 5,
+        num_conversations: int = None,
         force_reprocess: bool = False,
     ):
         super().__init__()

@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-05 09:35:28
+# @Last Modified time: 2023-06-05 15:41:00
 
 import sys
 import os
@@ -154,7 +154,6 @@ class MapTaskDataReader:
                 f"Number of conversations = {self.num_conversations}; "
                 f"Number of processes = {self.num_proc}"
             )
-            logger.info(force_reset)
             # Simply load the appropriate number of paths from disk.
             if not self._should_reset(variant_dir) and not force_reset:
                 self.paths[variant] = self._load_from_dir(

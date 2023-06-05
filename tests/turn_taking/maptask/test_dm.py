@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2023-05-31 11:31:59
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-04 14:26:41
+# @Last Modified time: 2023-06-05 10:38:36
 
 import pytest
 
@@ -33,7 +33,8 @@ def test_maptask_va_dm(
         feature_set=feature_set,
         target_participant=target_participant,
         batch_size=32,
-        force_reprocess=False,
+        force_reprocess=force_reprocess,
+        num_conversations=2,
     )
     dm.prepare_data()
     dm.setup()
@@ -66,6 +67,7 @@ def test_maptask_pause_dm(
         feature_set=feature_set,
         batch_size=1,
         force_reprocess=force_reprocess,
+        num_conversations=2,
     )
     dm.prepare_data()
     dm.setup()
