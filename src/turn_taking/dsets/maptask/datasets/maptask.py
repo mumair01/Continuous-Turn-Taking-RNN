@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-20 14:36:46
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-05 15:41:00
+# @Last Modified time: 2023-06-07 15:27:00
 
 import sys
 import os
@@ -18,7 +18,7 @@ from datasets import Dataset, load_from_disk
 
 
 from data_pipelines.features import OpenSmile, extract_feature_set
-from data_pipelines.datasets import load_data
+from data_pipelines.datasets import DataPipeline
 
 from turn_taking.dsets.utils import reset_dir
 from turn_taking.dsets.maptask.datasets.constants import MapTaskConstants
@@ -79,6 +79,8 @@ class MapTaskDataReader:
 
         assert num_proc > 0, f"ERROR: Num process {num_proc} not > 0"
 
+        self.dp = DataPipeline()
+
         self.frame_step_size_ms = frame_step_size_ms
         self.pos_delay_s = pos_delay_s
         self.num_conversations = num_conversations
@@ -105,8 +107,9 @@ class MapTaskDataReader:
         --------------
         self.paths, which can be obtained via data_paths
         """
-        dset_def = load_data("maptask")["full"]
-        dset_aud = load_data("maptask", variant="audio")["full"]
+        dset_def = self.dp.load_dset("maptask", variant="default")["full"]
+        dset_aud = self.dp.load_dset("maptask", variant="audio")["full"]
+
         # Merge the acoustic and default dataset columns.
         dset = self._merge_datasets(dset_def, dset_aud)
 

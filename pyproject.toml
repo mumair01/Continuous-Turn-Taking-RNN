@@ -13,11 +13,13 @@ build-backend = "setuptools.build_meta"
 
 
 [project.optional-dependencies]
-test = [
+dev = [
     "pytest",
     "pytest-cov",
     "pytest-timeout",
     "pytest-xdist",
+    "pipdeptree",
+    "ipython"
 ]
 
 [tool.setuptools.packages.find]
