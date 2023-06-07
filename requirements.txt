@@ -1,2 +1,2 @@
-data-pipelines @ git+https://github.com/mumair01/Data-Pipelines.git@bf1bd18ebc9936323db25d84a3ea22af95046c35
+data-pipelines @ git+https://github.com/mumair01/Data-Pipelines.git
 mlflow==2.3.2
