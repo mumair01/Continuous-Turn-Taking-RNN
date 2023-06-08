@@ -2,7 +2,7 @@
 # @Author: Muhammad Umair
 # @Date:   2022-12-22 13:34:59
 # @Last Modified by:   Muhammad Umair
-# @Last Modified time: 2023-06-05 10:32:03
+# @Last Modified time: 2023-06-07 22:11:05
 
 import sys
 import os
@@ -11,6 +11,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 # Hydra imports
+import hydra
 from hydra.core.config_store import ConfigStore
 from hydra_zen import (
     make_config,

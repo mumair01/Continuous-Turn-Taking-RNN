@@ -10,23 +10,20 @@
 
 ## Conda env.
 CONDA_ENV_DIR_REL_PATH=condaenv 
-CONDA_ENV_NAME=gpt_prod 
+CONDA_ENV_NAME=ctt
 
 ## Project paths 
 PROJECT_DIR_REL_PATH=projects
-PROJECT_DIR_NAME=gpt_test_5_16_23
+PROJECT_DIR_NAME=Continuous-Turn-Taking-RNN
 
 # ## Scripts paths 
-SCRIPT_DIR_REL_PATH=scripts
-
-FINETUNE_SCRIPT_NAME=finetune.py
-INFERENCE_SCRIPT_NAME=inference.py
+SCRIPT_DIR_REL_PATH=src/scripts
 
 ## Constructed paths
 export USER_PATH=/cluster/tufts/deruiterlab/mumair01 
 export PROJECT_PATH=${USER_PATH}/${PROJECT_DIR_REL_PATH}/${PROJECT_DIR_NAME}
 export PYTHON_ENV_PATH=${USER_PATH}/${CONDA_ENV_DIR_REL_PATH}/${CONDA_ENV_NAME}
-export EXPERIMENT_41_SCRIPT_PATH=${PROJECT_PATH}/${SCRIPT_DIR_REL_PATH}/experiment_41.py
+export EXPERIMENT_41_SCRIPT_PATH=${PROJECT_PATH}/${SCRIPT_DIR_REL_PATH}/experiment_4_1.py
 
 ## 
 echo Paths set for Tufts HPC env:
@@ -35,6 +32,6 @@ echo PROJECT_PATH=${PROJECT_PATH}
 echo PYTHON_ENV_PATH=${PYTHON_ENV_PATH}
 
 ## HPC Modules 
-export ANACONDA_MOD=anaconda/2021.11
+export ANACONDA_MOD=anaconda/2021.05
 export CUDA_MODS="cuda/10.2 cudnn/7.1"
 

@@ -1,3 +1,4 @@
 data-pipelines @ git+https://github.com/mumair01/Data-Pipelines.git
 hydra-zen==0.10.1
 pytorch_lightning==2.0.2
+hydra.core==1.3.2
