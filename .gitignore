@@ -133,3 +133,10 @@ data/
 .DS_Store
 
 output/
+test_results/
+
+lightning_logs/
+
+results/
+
+.vscode

@@ -1,19 +1,30 @@
+[project]
+name = "Continuous-Turn-Taking-RNN"
+version = "0.0.1a"
+
+description = "Continuous-Turn-Taking-RNN"
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.10"
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 
 [project.optional-dependencies]
-test = [
+dev = [
     "pytest",
     "pytest-cov",
     "pytest-timeout",
     "pytest-xdist",
+    "pipdeptree",
+    "ipython"
 ]
 
-
-[tool.setuptools.packages]
-find = {}  # Scanning implicit namespaces is active by default
+[tool.setuptools.packages.find]
+where = ["src"]
+# find = {"src"}  # Scanning implicit namespaces is active by default
 
 # pyproject.toml
 [tool.pytest.ini_options]

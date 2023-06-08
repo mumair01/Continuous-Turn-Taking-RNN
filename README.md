@@ -1,10 +1,24 @@
 # Continuous Model of Turn-Taking using LSTM RNNs
 
-## About
 
-This project is my implementation of a continuous predictive model for turn-taking based on Skantze's 2017 [paper](https://www.diva-portal.org/smash/get/diva2:1141130/FULLTEXT01.pdf). The goal is to use this implementation to reproduce the results achieved in the original model and use it as a baseline for future improvements.
+This project is my implementation of a continuous predictive model for turn-taking based on the paper "Towards a General, Continuous Model of [Turn-taking in Spoken Dialogue using LSTM" (Skantze, 2017)](https://www.diva-portal.org/smash/get/diva2:1141130/FULLTEXT01.pdf).
 
-## Overview
+The goal in re-implementing this paper was to integrate new ML frameworks, gain experience in developing continuous models of turn-taking, and demonstrate the usefulness of the [Data-Pipelines](https://github.com/mumair01/Data-Pipelines) project.
+
+## Contents
+
+This document has the following sections:
+
+- [About](#about)
+- [Built With](#built-with)
+- [Getting Started](#getting-started)
+- [Environment Setup](#environment-setup)
+- [Datasets](#datasets)
+- [Experiments](#experiments)
+- [Acknowledgements](#acknowledgements)
+
+
+## About 
 
 Smooth turn-taking is an important aspect of natural conversation. It allows interlocutors to maintain adequate mutual comprehensibility and ensures the sequential dependency of successive turns. Humans in natural conversation are highly adept at coordinating turns by minimize gaps and overlaps while following the “one-speaker-at-a-time" rule. A consequence is that the timing between utterances is normatively constrained, and deviations convey socially relevant paralinguistic information. However, the smooth exchange of messages without communication of unintended paralinguistic information continues to be a challenge for spoken dialogue systems (SDS).
 
@@ -12,7 +26,7 @@ Smooth turn-taking is an important aspect of natural conversation. It allows int
 
 Incremental and continuous models of end of turn and TRP detection have traditionally been challenging to implement. One key obstacles is the lack of consensus on the timescale at which these models should operate, whether there should be multiple timescales, or what the ideal incremental unit might be. Another hurdle is the lack of open-source incremental SDS frameworks, which has pushed researchers to simulate incremental input. Additionally, while individuals models of endpointing have achieved high accuracy, these may not always operate within the constraints of larger robotics systems. Despite these challenges, there has been significant progress in continuous modeling. Skantze et al. (2017) developed a generalized LSTM based model of turn-taking trained on dialogue from the MapTask corpus. In this project, we reimplement this model to use as a baseline for future models.
 
-## Built with
+## Built With 
 
 Here are some of the popular frameworks this project uses:
 
@@ -22,7 +36,13 @@ Here are some of the popular frameworks this project uses:
 - [ML Flow](https://mlflow.org/)
 - [Hydra zen](https://mit-ll-responsible-ai.github.io/hydra-zen/)
 
-## Getting Started
+## Getting Started 
+
+The first step is to clone this repository using:
+
+```bash
+git clone https://github.com/mumair01/GPT-Monologue-to-Dialogue.git
+```
 
 ### Structure
 
@@ -30,17 +50,12 @@ The following is the structure for this repository.
 
 ```txt
 |-- bin/
-|-- data/
-    |-- raw/
-    |-- processed/
-    |-- cached/
 |-- notebooks/
 |-- src/
-    |-- configs/
-    |-- data_lib/
-    |-- experiments/
-    |-- models/
-    |-- *.py
+    |--scripts/
+    |--turn_taking
+        |--dsets/
+        |--models/
 |-- tests/
 |-- LICENSE
 |-- pyproject.toml
@@ -52,26 +67,57 @@ Here is a description of what each directory contains:
 | Directory      | Description |
 | ----------- | ----------- |
 | bin      | Contains various shell scripts   |
-| data   | Contains raw, processed, and cached forms of the underlying dataset |
 | notebooks   | Proof of concept notebooks for the project |
 | src   | Contains the data library, model, and experiment implementations |
 | tests   | Pytest testing folder        |
 
-### Usage
 
-The first step is to clone this repository using:
+## Environment Setup
 
-```bash
-git clone https://github.com/mumair01/GPT-Monologue-to-Dialogue.git
-```
+### Python Environment
 
-Next, use [conda](https://docs.conda.io/en/latest/) to install all required libraries using:
+First, use [conda](https://docs.conda.io/en/latest/) to create a virtual environment, and install dependencies using:
 
 ```bash
-conda env create -f environment.yml
+pip install -r requirements.txt
 ```
+
+Alternatively, the complete repository can be installed as a package using:
+```bash
+pip install https://github.com/mumair01/Data-Pipelines.git
+```
+
+To install all dependencies for development, install the dev group:
+```bash
+pip install https://github.com/mumair01/Data-Pipelines.git '.[dev]`
+```
+
+### Project Environment and HPC usage
+
+The bin/hpc_slurm folder provides shell scripts to run experiments on a High Performance Cluster as a slurm job. 
+
+To set up the HPC environment, run
+```
+source set_hpc_env.sh
+```
+
+Next, submit any experiment script using slurm.
+
+### MlFlow and Hydra
+
+The scripts in src/scripts, which are used to run experiments, use [MLflow](https://mlflow.org) to track runs. To view the results, navigate to the results directory created after running the experiment script. Then, run the following command:
+
+```bash
+mlflow ui --backend-store-uri <RESULTS_DIRECTORY>
+```
+
+**NOTE**: <RESULTS_DIRECTORY> above should be replaced by the directory containing the mlflow results. By default, this will be the mlruns/ directory. 
+
+Additionally, the experiment scripts use hydra for configuration management. Logs of the hydra runs can also be found in the results directory.
 
 ## Datasets
+
+### MapTask
 
 The original paper used the [HCRC MapTask](https://groups.inf.ed.ac.uk/maptask/) corpus for all experiments. The HCRC Map Task Corpus is a set of 128 dialogues that has been recorded, transcribed, and annotated for a wide range of behaviours, and has been released for research purposes. It was originally designed to elicit behaviours that answer specific research questions in linguistics.
 
@@ -95,12 +141,12 @@ Each x in the dataset consists of a sequence of context frames before the silenc
 
 ## Experiments
 
-In the original paper, there were three experiments in sections 4.1, 4.2, and 4.3. In this project, we implement experiments 4.1 and 4.2. We do not implement experiment due to unavailability of data.
+In the original paper, there were three experiments in sections 4.1, 4.2, and 4.3. In this project, we implement only implement experiment 4.1
 
 In Experiment 4.1, we use the MaptaskVADataset to train the models to predict voice activity for a fixed future horizon from the perspective of one speaker in a dialogue.
 
-In Experiment 4.2, we use the the trained models from the perspective of both speakers to predict the next speaker once a pause has been identified in a conversation.
-
 ## Acknowledgements
+
+Developed by [Muhammad Umair](https://www.linkedin.com/in/mumair/https://sites.tufts.edu/hilab/) at Tufts University, Medford, MA. 
 
 This project is a reimplementation of the paper [Towards a General, Continuous Model of Turn-taking in Spoken Dialogue using LSTM Recurrent Neural Networks](https://aclanthology.org/W17-5527.pdf).
