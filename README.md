@@ -74,6 +74,30 @@ Here is a description of what each directory contains:
 
 ## Environment Setup
 
+
+### Conda Environment
+
+**IMPORTANT**: This repository uses x86 versions of certain packages, which is 
+the default on intel (i386) Macs but not for the newer (apple silicon) Macs.
+
+
+Intel Macs (i386): Use the following instructions to set up and activate a conda environment:
+
+```
+conda create -n ctt_x86 python=3.10
+conda activate ctt_x86
+```
+
+Apple Macs (arm64): Use the following instructions to set up and activate a conda environment:
+
+```
+CONDA_SUBDIR=osx-64 conda create -n ctt_x86 python=3.10
+conda activate ctt_x86
+conda config --env --set subdir osx-64
+```
+
+Note: The name of the conda environment will be 'ctt_x86.
+
 ### Python Environment
 
 First, use [conda](https://docs.conda.io/en/latest/) to create a virtual environment, and install dependencies using:
@@ -84,12 +108,12 @@ pip install -r requirements.txt
 
 Alternatively, the complete repository can be installed as a package using:
 ```bash
-pip install https://github.com/mumair01/Data-Pipelines.git
+pip install https://github.com/mumair01/Continuous-Turn-Taking-RNN.git
 ```
 
 To install all dependencies for development, install the dev group:
 ```bash
-pip install https://github.com/mumair01/Data-Pipelines.git '.[dev]`
+pip install https://github.com/mumair01/Continuous-Turn-Taking-RNN.git '.[dev]`
 ```
 
 ### Project Environment and HPC usage
